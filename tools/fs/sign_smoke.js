@@ -1,0 +1,31 @@
+// sign: tap with the Sign tool, type a name in the sheet, check the image object and the saved PDF.
+await new Promise((r) => setTimeout(r, 800));
+const out = {};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+app.useTool("sign");
+const pid = app.currentPageId();
+const layer = document.querySelector(`.layer-tool[data-page="${pid}"]`);
+const r = layer.getBoundingClientRect();
+const opts = (t) => ({ bubbles: true, pointerId: 1, pointerType: "mouse", clientX: r.left + r.width * 0.5, clientY: r.top + r.height * 0.8, button: 0, isPrimary: true });
+layer.dispatchEvent(new PointerEvent("pointerdown", opts()));
+layer.dispatchEvent(new PointerEvent("pointerup", opts()));
+await sleep(500);
+out.sheet = !!document.querySelector(".fs-sheet");
+document.querySelector('.fs-tab[data-tab="type"]').click();
+const inp = document.querySelector(".fs-name");
+inp.value = "Ada Lovelace"; inp.dispatchEvent(new Event("input", { bubbles: true }));
+await sleep(900);
+out.canUse = !document.querySelector(".fs-use").disabled;
+if (window.__shot) await window.__shot();
+document.querySelector(".fs-use").click();
+await sleep(700);
+const objs = app.state.pages[0].objects;
+out.objects = objs.map((o) => ({ type: o.type, w: Math.round(o.w), h: Math.round(o.h) }));
+const sigs = await app.fs.getSignature("signature").catch(String);
+out.chosenPlacedAgain = !!sigs && !document.querySelector(".fs-sheet");
+const { bytes } = await app.buildPdf();
+const doc = await app.pdfLib.PDFDocument.load(bytes);
+out.imagesInPdf = doc.context.enumerateIndirectObjects().filter(([, o]) => o.dict?.get?.(app.pdfLib.PDFName.of("Subtype"))?.toString() === "/Image").length;
+// date + initials
+app.placeNext && 0;
+return out;

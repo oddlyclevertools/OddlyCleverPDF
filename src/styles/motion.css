@@ -1,0 +1,70 @@
+/* Motion system: the one set of timings, easings and entrance animations every part of the app
+   uses, so the whole studio moves the same way. Use the tokens (never raw ms) and the oc-*
+   keyframes/classes. Everything calms down for people who ask their system for less motion. */
+
+:root {
+  --dur-1: 110ms;   /* hover, press, small state flips */
+  --dur-2: 180ms;   /* popovers, tooltips, toggles */
+  --dur-3: 280ms;   /* panels, dialogs, toasts */
+  --dur-4: 420ms;   /* big reveals, page-level moves */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);       /* things arriving */
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);        /* things leaving */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);   /* things moving across */
+  /* --ease and --spring live in app.css */
+  --stagger: 28ms;  /* per item in a revealed list (see motion.js stagger) */
+  --lift: translateY(-2px);
+}
+
+/* ---- entrances (add the class, or use the keyframes in your own rule) ---- */
+@keyframes oc-pop-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes oc-fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes oc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes oc-slide-left { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+@keyframes oc-slide-right { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes oc-slide-down { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes oc-zoom-in { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
+
+.oc-enter { animation: oc-pop-in var(--dur-3) var(--ease-out) backwards; }
+.oc-enter-up { animation: oc-fade-up var(--dur-3) var(--ease-out) backwards; }
+.oc-enter-fade { animation: oc-fade-in var(--dur-2) var(--ease-out) backwards; }
+
+/* A list that reveals its items one after another: motion.js stagger() sets --i on each child. */
+.oc-stagger > * { animation: oc-fade-up var(--dur-3) var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * var(--stagger)); }
+
+/* ---- feedback ---- */
+@keyframes oc-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 46, 126, 0); } 50% { box-shadow: 0 0 0 6px rgba(255, 46, 126, .18); } }
+@keyframes oc-done { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes oc-shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+@keyframes oc-spin { to { transform: rotate(360deg); } }
+@keyframes oc-shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+
+.oc-pulse { animation: oc-pulse 1.6s var(--ease-in-out) infinite; }
+.oc-done { animation: oc-done var(--dur-3) var(--spring); }
+.oc-shake { animation: oc-shake 320ms var(--ease-in-out); }
+.oc-spin { animation: oc-spin 0.9s linear infinite; }
+
+/* A loading placeholder in the theme (cards, thumbnails, lines of text). */
+.oc-skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-3) 25%, var(--bg-4) 50%, var(--bg-3) 75%);
+  background-size: 200% 100%;
+  animation: oc-shimmer 1.4s linear infinite;
+}
+
+/* Buttons squash a little when pressed, everywhere (a tactile feel without extra code). */
+:where(button, .btn, [role="button"]):not(:disabled):active { transform: scale(.97); }
+:where(button, .btn, [role="button"]) { transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out),
+  color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+
+/* One focus ring for keyboard users, in the brand pink. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+/* Less motion when the system asks for it: keep fades, drop movement and loops. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

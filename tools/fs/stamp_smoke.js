@@ -1,0 +1,28 @@
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+await sleep(800);
+const out = {};
+const pid = app.currentPageId();
+app.useTool("stamp");
+await sleep(400);
+out.panel = !!document.querySelector(".fs-badges");
+document.querySelector('.fs-badge[data-badge="APPROVED"]').click();
+await sleep(200);
+out.tool = app.state.tool;
+const layer = document.querySelector(`.layer-tool[data-page="${pid}"]`);
+const r = layer.getBoundingClientRect();
+const tap = (fx, fy) => { const o = { bubbles: true, pointerId: 1, pointerType: "mouse", clientX: r.left + r.width * fx, clientY: r.top + r.height * fy, button: 0, isPrimary: true }; layer.dispatchEvent(new PointerEvent("pointerdown", o)); layer.dispatchEvent(new PointerEvent("pointerup", o)); };
+tap(0.6, 0.15);
+await sleep(600);
+document.querySelector('.fs-mark[data-mark="check"]').click();
+tap(0.3, 0.45);
+await sleep(300);
+document.querySelector('.fs-mark[data-mark="cross"]').click();
+tap(0.4, 0.45);
+await sleep(300);
+// custom stamp
+app.fs.placeStamp(pid, { x: 150, y: 600 }, { kind: "badge", text: "Checked by Ada", color: "#1f4fd8" });
+await sleep(600);
+out.objects = app.state.pages[0].objects.map((o) => `${o.type}${o.stamp ? ":" + o.stamp : ""}`);
+const { bytes } = await app.buildPdf();
+out.pdfOk = bytes.length;
+return out;

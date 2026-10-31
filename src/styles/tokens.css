@@ -1,0 +1,59 @@
+/* Look: "paper and stickers". Warm paper desk, ink outlines, hard sticker shadows, Oddly Clever pink.
+   Night swaps to an ink desk with paper-coloured lines. Every colour is a token here. */
+:root {
+  --desk: #fff4e3;
+  --desk-dot: rgba(22, 18, 27, 0.07);
+  --card: #fffdf8;
+  --card-2: #fff7ea;
+  --paper-hi: #ffffff;
+  --ink: #16121b;
+  --text: #16121b;
+  --muted: #6a5f6e;
+  --line: rgba(22, 18, 27, 0.14);
+  --edge: #16121b;            /* sticker outlines */
+  --shadow-hard: 3px 3px 0 var(--edge);
+  --shadow-lift: 5px 6px 0 var(--edge);
+  --shadow-soft: 0 18px 40px -18px rgba(40, 20, 30, 0.35);
+  --accent: #ff2e7e;
+  --accent-ink: #ffffff;
+  --accent-soft: #ffe0ec;
+  --gold: #ffc83d;
+  --cyan: #5fd3ff;
+  --mint: #3ddc97;
+  --violet: #9b7bff;
+  --orange: #ff9a3c;
+  --ok: #11845b;
+  --danger: #d81f3c;
+  --page-shadow: 0 1px 0 rgba(0,0,0,.05), 0 10px 30px -12px rgba(60, 30, 40, 0.45);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ui: "OC Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --hand: "OC Hand", cursive;
+  --top-h: 60px;
+  --belt-w: 86px;
+  --panel-w: 360px;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --desk: #15111a;
+  --desk-dot: rgba(255, 240, 225, 0.06);
+  --card: #211a29;
+  --card-2: #2a2133;
+  --paper-hi: #fff7ea;
+  --ink: #16121b;
+  --text: #f7efe6;
+  --muted: #b6a8b8;
+  --line: rgba(255, 240, 225, 0.14);
+  --edge: #f3e6d4;
+  --shadow-hard: 3px 3px 0 rgba(243, 230, 212, 0.85);
+  --shadow-lift: 5px 6px 0 rgba(243, 230, 212, 0.9);
+  --shadow-soft: 0 18px 40px -18px rgba(0, 0, 0, 0.8);
+  --accent-soft: #4a1f33;
+  --page-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 14px 34px -12px rgba(0, 0, 0, 0.9);
+  color-scheme: dark;
+}
+@media (max-width: 760px) {
+  :root { --top-h: 54px; }
+}
