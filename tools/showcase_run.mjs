@@ -6,6 +6,7 @@
 import { chromium } from "@playwright/test";
 import { pathToFileURL } from "node:url";
 import { basename, join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { startRecorder } from "./showcase_record.mjs";
 
 const [scriptPath, ...flags] = process.argv.slice(2);
@@ -36,9 +37,12 @@ await page.reload({ waitUntil: "networkidle" });
 await page.waitForTimeout(1200);
 const out = join("showcase/clips", `${basename(scriptPath).replace(/\.m?js$/, "")}.mp4`);
 const recorder = dry ? null : await startRecorder(page, out);
+globalThis.__recStart = Date.now(); // pace.mjs marks beats against this, for the edit
 let result = null;
 try {
   result = await (await import(pathToFileURL(scriptPath).href)).default({ page, phone });
+  const { marks } = await import(pathToFileURL("showcase/scripts/pace.mjs").href);
+  if (!dry) writeFileSync(out.replace(/\.mp4$/, ".marks.json"), JSON.stringify(marks, null, 1));
   await page.waitForTimeout(600);
 } finally {
   if (recorder) console.log(`recorded ${await recorder.stop()}`);
