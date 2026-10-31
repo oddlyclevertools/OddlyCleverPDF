@@ -49,7 +49,7 @@ npm install
 npm run dev
 ```
 
-Then open http://127.0.0.1:5185. `npm test` runs the tests, and `npm run build` makes the static site in `dist/`, which you can host anywhere.
+Then open http://127.0.0.1:5185. `npm test` runs the tests, and `npm run build` makes the static site in `dist/`, which you can host anywhere. `bash tools/publish_pages.sh` puts a fresh build on the live site.
 
 How the code is laid out: `src/core` holds the document, opening and saving; `src/viewer` shows the pages; `src/tools` holds the page tools; `src/ui` is the interface. The bigger features each live in their own folder in `src/features/` (pages, convert, ai, forms). `docs/CONTRACT.md` explains how a feature plugs in.
 
