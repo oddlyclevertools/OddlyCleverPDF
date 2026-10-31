@@ -63,9 +63,21 @@ textarea.input { resize: vertical; line-height: 1.4; }
 .top-edit, .top-actions, .save-group { display: flex; align-items: center; gap: 4px; }
 .save-btn { margin-left: 6px; }
 body[data-view="home"] .top-doc, body[data-view="home"] .top-edit, body[data-view="home"] .top-actions > :not(.theme-btn):not(.keep-home) { visibility: hidden; }
+/* on phones the hidden editor buttons must not take room from "Get the app" */
+@media (max-width: 720px) { body[data-view="home"] .top-edit, body[data-view="home"] .top-actions > :not(.theme-btn):not(.keep-home) { display: none; } }
 .only-phone { display: none; }
-.install-btn { display: none; }
-body.can-install .install-btn { display: inline-flex; }
+.install-btn { white-space: nowrap; }
+body.in-app .install-btn, body[data-view="editor"] .install-btn { display: none; }
+/* the look picker lives on the home screen (and in Ctrl+K), not in the editor's top bar */
+body[data-view="editor"] .theme-btn { display: none; }
+.getapp { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
+.getapp-opt { display: flex; align-items: center; gap: 14px; padding: 14px; border: 2px solid var(--edge); border-radius: 16px; background: var(--card); box-shadow: var(--shadow-hard); }
+.getapp-opt:first-of-type { border-width: 3px; }
+.getapp-icon { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; border: 2px solid var(--edge); background: var(--accent-soft); }
+.getapp-words { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.getapp-words span { color: var(--muted); font-size: 14px; }
+.getapp-opt .btn { flex: none; text-decoration: none; }
+@media (max-width: 560px) { .getapp-opt { flex-wrap: wrap; } .getapp-words { flex-basis: calc(100% - 58px); } .getapp-opt .btn { width: 100%; justify-content: center; } }
 
 /* ---------- home ---------- */
 .home { flex: 1; overflow: auto; padding: 28px 20px 60px; display: none; }
@@ -108,6 +120,8 @@ body[data-view="home"] .editor { display: none; }
 .resume-card span { color: var(--muted); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tasks-title { max-width: 1100px; margin: 38px auto 6px; font-size: 26px; letter-spacing: -.02em; }
 .tasks { max-width: 1100px; margin: 0 auto; }
+.task-all { margin: 18px auto 0; display: flex; }
+.task-more[hidden] { display: none; }
 .task-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 22px 0 10px; }
 .task-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .task {
@@ -146,6 +160,7 @@ body[data-view="home"] .editor { display: none; }
 .belt-sep { height: 2px; background: var(--line); margin: 6px 8px; flex: none; }
 .shape-menu { position: absolute; left: calc(var(--belt-w) - 4px); z-index: 40; display: flex; gap: 4px; padding: 6px; border: 2px solid var(--edge); border-radius: 16px; background: var(--card); box-shadow: var(--shadow-lift); }
 .shape-menu .belt-btn { width: 64px; }
+.more-menu { display: grid; grid-template-columns: repeat(4, 64px); }
 
 /* ---------- the page column ---------- */
 .viewport { position: absolute; inset: 0; overflow: auto; outline: none; touch-action: pan-x pan-y; overscroll-behavior: contain; }
@@ -342,6 +357,8 @@ body.dragging::after { content: "Drop to open"; position: fixed; inset: 12px; z-
   .belt-btn { flex: none; width: 66px; padding: 6px 2px; font-size: 11px; }
   .belt-sep { width: 2px; height: auto; margin: 6px 4px; }
   .shape-menu { position: fixed; left: 8px; right: 8px; bottom: calc(80px + env(safe-area-inset-bottom)); justify-content: center; }
+  .more-menu { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .more-menu .belt-btn { width: auto; }
   .panel { position: fixed; left: 0; right: 0; bottom: 0; width: auto !important; max-height: 78dvh; border-left: 0; border-top: 2px solid var(--edge); border-radius: 24px 24px 0 0;
     transform: translateY(105%); transition: transform .35s var(--ease-out); box-shadow: 0 -20px 50px -20px rgba(0,0,0,.4); z-index: 60; padding-bottom: env(safe-area-inset-bottom); }
   body.panel-open .panel { transform: none; }

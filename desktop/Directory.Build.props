@@ -1,0 +1,27 @@
+<Project>
+  <!-- Shared by the app, the installer and the uninstaller. build.sh passes -p:Version from package.json. -->
+  <PropertyGroup>
+    <!-- compiler output stays under build/, which git ignores -->
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)build\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)build\compile\$(MSBuildProjectName)\</BaseOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Product>OddlyClever PDF</Product>
+    <Company>Oddly Clever Tools</Company>
+    <Copyright>Copyright (c) Oddly Clever Tools. MIT licence.</Copyright>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <ApplicationIcon>$(MSBuildThisFileDirectory)assets\OddlyCleverPDF.ico</ApplicationIcon>
+    <ApplicationManifest>$(MSBuildThisFileDirectory)shared\app.manifest</ApplicationManifest>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)shared\Product.cs" Link="Product.cs" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+</Project>

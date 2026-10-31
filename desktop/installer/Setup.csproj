@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- OddlyCleverPDF-Setup.exe: one file with the program zipped inside. build.sh fills ..\build\stage first. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>OddlyCleverPDF-Setup</AssemblyName>
+    <RootNamespace>OddlyClever</RootNamespace>
+    <AssemblyTitle>OddlyClever PDF Setup</AssemblyTitle>
+    <StageDir>$(MSBuildThisFileDirectory)..\build\stage</StageDir>
+    <PayloadZip>$(MSBuildThisFileDirectory)..\build\payload.zip</PayloadZip>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\shared\Integration.cs" Link="Integration.cs" />
+    <Reference Include="System.IO.Compression" />
+    <EmbeddedResource Include="$(PayloadZip)" LogicalName="payload.zip" />
+    <EmbeddedResource Include="..\assets\logo-256.png" LogicalName="logo.png" />
+  </ItemGroup>
+  <Target Name="ZipPayload" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(StageDir)\OddlyClever PDF.exe')" Text="Run desktop/build.sh: the program files aren't staged in build\stage yet." />
+    <ZipDirectory SourceDirectory="$(StageDir)" DestinationFile="$(PayloadZip)" Overwrite="true" />
+  </Target>
+</Project>

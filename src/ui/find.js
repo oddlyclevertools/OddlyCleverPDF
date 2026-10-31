@@ -2,7 +2,7 @@
 // and glows the match. Can also highlight every match in one go.
 import { el, icon } from "./kit.js";
 import { state, change, uid } from "../core/store.js";
-import { pageLines } from "../core/text.js";
+import { pageLines, charX } from "../core/text.js";
 import { registerPanel, openPanel, registerTopAction, registerCommands } from "./shell.js";
 import { scrollToPage, viewOf } from "../viewer/viewer.js";
 
@@ -30,10 +30,9 @@ function rectFor(line, k, n) {
   let pos = 0, x0 = null, x1 = null, prevEnd = null;
   for (const r of line.runs) {
     if (prevEnd != null && r.x - prevEnd > r.size * 0.18 && !r.str.startsWith(" ")) pos += 1; // the joined space
-    const cw = r.w / Math.max(1, r.str.length);
     for (let c = 0; c < r.str.length; c++, pos++) {
-      if (pos === k) x0 = r.x + c * cw;
-      if (pos === k + n - 1) x1 = r.x + (c + 1) * cw;
+      if (pos === k) x0 = charX(r, c);
+      if (pos === k + n - 1) x1 = charX(r, c + 1);
     }
     prevEnd = r.x + r.w;
   }

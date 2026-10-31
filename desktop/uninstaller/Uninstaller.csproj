@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- "Uninstall OddlyClever PDF.exe", copied into the program folder; "Apps & features" runs it. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Uninstall OddlyClever PDF</AssemblyName>
+    <RootNamespace>OddlyClever</RootNamespace>
+    <AssemblyTitle>Uninstall OddlyClever PDF</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\shared\Integration.cs" Link="Integration.cs" />
+  </ItemGroup>
+</Project>

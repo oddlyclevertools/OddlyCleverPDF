@@ -164,6 +164,8 @@ body.fs-scanning { overflow: hidden; }
   .fs-banner { flex-wrap: nowrap; gap: 6px; padding: 4px 6px 4px 10px; }
   .fs-banner .fs-flat, .fs-banner > svg { display: none; }
   .fs-banner-text { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fs-banner .fs-next { min-height: 36px; padding: 0 10px; }
+  .fs-banner .fs-next { min-height: 36px; padding: 0 10px; white-space: nowrap; flex: none; }
+  /* leave room above the first page while the banner shows */
+  body:has(.fs-banner.show) .pages { padding-top: 62px; }
   .fs-grid { grid-template-columns: repeat(2, 1fr); }
 }

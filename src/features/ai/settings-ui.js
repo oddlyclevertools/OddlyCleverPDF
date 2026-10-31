@@ -56,7 +56,7 @@ export function renderSettings({ onChange }) {
     // Thinking level, for every provider (each lists the levels it takes).
     const levels = effortsFor(p);
     const chosen = levels.find((e) => e.id === s.effort) || levels[0];
-    const effort = field("How hard it thinks", el("div.ai-seg.ai-effort", { role: "radiogroup", "aria-label": "How hard it thinks" }, levels.map((e) =>
+    const effort = field("Thinking", el("div.ai-seg.ai-effort", { role: "radiogroup", "aria-label": "How much it thinks" }, levels.map((e) =>
       el("button", { type: "button", role: "radio", title: e.tip, "aria-checked": String(e.id === chosen.id), class: e.id === chosen.id ? "on" : null,
         on: { click: () => { updateProviderSettings(s.id, { effort: e.id }); changed(); } } }, e.name))),
     `${chosen.tip}.${p.kind === "anthropic" ? "" : " If a model can't take a level, it runs at its own default and tells you."}`);
@@ -79,7 +79,7 @@ export function renderSettings({ onChange }) {
     const forget = el("button.btn.small.ghost.ai-forget", { type: "button", title: "Remove the key from this browser",
       on: { click: async () => { await forgetKey(s.id); onChange(); draw(); toast("Key forgotten."); } } }, icon("Trash2", 14), "Forget key");
     const keyBox = p.noKey ? null : el("div.ai-keybox", {},
-      field("API key", keyInput, getKey(s.id) ? (isRemembered(s.id) ? "Saved in this browser." : "Kept in memory only: gone when you close the tab.") : null),
+      field("Your key (API key)", keyInput, getKey(s.id) ? (isRemembered(s.id) ? "Saved in this browser." : "Kept in memory only: gone when you close the tab.") : null),
       el("div.row", {}, remember, el("span.grow"), getKey(s.id) ? forget : null),
       p.keyUrl ? el("a.ai-link", { href: p.keyUrl, target: "_blank", rel: "noopener noreferrer" }, icon("KeyRound", 13), "Get a key") : null);
 
@@ -87,8 +87,9 @@ export function renderSettings({ onChange }) {
       "aria-label": "Address", on: { change: () => { updateProviderSettings(s.id, { url: urlInput.value.trim() }); changed(); } } });
     const vision = p.kind === "anthropic" ? null : toggle({ label: "This model can see pictures", value: s.vision,
       onChange: (on) => { updateProviderSettings(s.id, { vision: on }); onChange(); } });
+    // the rarely needed bits stay folded away
     const more = el("details.ai-more", { open: p.id === "custom" || !s.url },
-      el("summary", {}, "More settings"), field("Address", urlInput, p.kind === "anthropic" ? "Leave as is unless you use a proxy." : null), vision);
+      el("summary", {}, "More settings"), effort, field("Address", urlInput, p.kind === "anthropic" ? "Leave as is unless you use a proxy." : null), vision);
 
     const setup = localSetup(p.id);
     const setupBox = setup ? el("div.ai-setup", {}, el("b", {}, icon("Cpu", 14), setup.title),
@@ -114,8 +115,9 @@ export function renderSettings({ onChange }) {
 
     root.replaceChildren(...[
       field("Choose your AI", providerSel),
+      keyBox,
       field(p.kind === "anthropic" ? "Model" : "Model name", modelCtl),
-      effort, keyBox, setupBox, more,
+      setupBox, more,
       el("div.ai-facts", {},
         el("div", { class: `ai-privacy ${priv.local ? "local" : "cloud"}` }, icon(priv.local ? "Monitor" : "Cloud", 14), priv.text),
         el("div.ai-cost", {}, icon("Info", 14), `Cost: ${costHint(s)} (rough guess).`)),

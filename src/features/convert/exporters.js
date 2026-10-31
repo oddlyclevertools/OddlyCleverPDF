@@ -202,7 +202,7 @@ function pdfFromPages(kind) {
     doc.setTitle(baseName(app.state.name));
     for (const [n, i] of indexes.entries()) {
       abortIf(ctx.signal);
-      ctx.progress?.(0.1 + (n / indexes.length) * 0.85, `Flattening page ${i + 1}`);
+      ctx.progress?.(0.1 + (n / indexes.length) * 0.85, `Drawing page ${i + 1}`);
       const { w, h } = await pageSize(pdf, i);
       const canvas = await renderPage(app, pdf, i, dpi);
       if (kind === "grey") greyscale(canvas);

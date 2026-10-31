@@ -9,7 +9,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "predev": "node tools/gen_icons.mjs",
-    "prebuild": "node tools/gen_icons.mjs"
+    "prebuild": "node tools/gen_icons.mjs",
+    "pretest": "node tools/gen_icons.mjs"
   },
   "license": "MIT",
   "type": "module",

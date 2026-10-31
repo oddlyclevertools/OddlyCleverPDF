@@ -1,5 +1,6 @@
 // Finding words on a page: turns a quote (or a regex like emails) into boxes in page space.
-// Pure functions, no DOM, so they can be unit-tested.
+// Letter positions come from core charX (measured; equal widths when there's no canvas, as in tests).
+import { charX } from "../../core/text.js";
 
 /** A line's text plus where each run sits inside it (same spacing rule as core joinRuns). */
 export function lineMap(line) {
@@ -20,9 +21,9 @@ export function spanRect(map, a, b) {
   for (const s of map.segs) {
     const lo = Math.max(a, s.start), hi = Math.min(b, s.end);
     if (hi <= lo || s.end === s.start) continue;
-    const len = s.end - s.start, r = s.run;
-    x0 = Math.min(x0, r.x + (r.w * (lo - s.start)) / len);
-    x1 = Math.max(x1, r.x + (r.w * (hi - s.start)) / len);
+    const r = s.run;
+    x0 = Math.min(x0, charX(r, lo - s.start));
+    x1 = Math.max(x1, charX(r, hi - s.start));
     y0 = Math.min(y0, r.y);
     y1 = Math.max(y1, r.y + r.h);
     first = first || r;

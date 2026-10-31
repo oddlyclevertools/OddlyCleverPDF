@@ -1,0 +1,5 @@
+# everything here is made by build.sh
+build/
+out/
+bin/
+obj/

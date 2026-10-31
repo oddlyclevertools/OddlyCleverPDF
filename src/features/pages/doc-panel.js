@@ -361,19 +361,20 @@ function redactHelp(app, body) {
     bigBtn("Draw black boxes", "SquareDashed", () => { app.closePanel(); app.useTool("redact"); }));
 }
 
+// grouped so the list reads in four short chunks instead of one long one
 const SECTIONS = [
-  { id: "merge", icon: "Combine", title: "Join files", blurb: "Add more files to this one", build: merge },
-  { id: "split", icon: "Scissors", title: "Split", blurb: "Cut it into smaller PDFs", build: split },
-  { id: "compress", icon: "Minimize2", title: "Make the file smaller", blurb: "Easier to email", build: compress },
-  { id: "watermark", icon: "Stamp", title: "Watermark", blurb: "Words or a picture on every page", build: watermark, chip: () => get("watermark").on },
-  { id: "numbers", icon: "Hash", title: "Page numbers", blurb: "Number the pages", build: numbers, chip: () => get("numbers").on },
-  { id: "headfoot", icon: "PanelTop", title: "Header and footer", blurb: "Text at the top and bottom", build: headfoot, chip: () => get("headfoot").on },
-  { id: "protect", icon: "Lock", title: "Protect with a password", blurb: "Only people with it can open", build: protect, chip: () => get("security").on },
-  { id: "unlock", icon: "LockOpen", title: "Unlock", blurb: "Save without a password", build: unlock },
-  { id: "crop", icon: "Crop", title: "Crop", blurb: "Trim the page edges", build: crop, chip: () => Object.keys(get("crop")).length > 0 },
-  { id: "info", icon: "Info", title: "Document info", blurb: "Title, author and more", build: info },
-  { id: "flatten", icon: "Layers", title: "Flatten", blurb: "Lock in forms and notes", build: flatten, chip: () => get("flatten").on },
-  { id: "redact", icon: "SquareDashed", title: "Black out private info", blurb: "Real redaction", build: redactHelp },
+  { group: "The file", id: "merge", icon: "Combine", title: "Join files", blurb: "Add more files to this one", build: merge },
+  { group: "The file", id: "split", icon: "Scissors", title: "Split", blurb: "Cut it into smaller PDFs", build: split },
+  { group: "The file", id: "compress", icon: "Minimize2", title: "Make the file smaller", blurb: "Easier to email", build: compress },
+  { group: "On every page", id: "watermark", icon: "Stamp", title: "Watermark", blurb: "Words or a picture on every page", build: watermark, chip: () => get("watermark").on },
+  { group: "On every page", id: "numbers", icon: "Hash", title: "Page numbers", blurb: "Number the pages", build: numbers, chip: () => get("numbers").on },
+  { group: "On every page", id: "headfoot", icon: "PanelTop", title: "Header and footer", blurb: "Text at the top and bottom", build: headfoot, chip: () => get("headfoot").on },
+  { group: "On every page", id: "crop", icon: "Crop", title: "Crop", blurb: "Trim the page edges", build: crop, chip: () => Object.keys(get("crop")).length > 0 },
+  { group: "Privacy", id: "protect", icon: "Lock", title: "Add a password", blurb: "Only people with it can open", build: protect, chip: () => get("security").on },
+  { group: "Privacy", id: "unlock", icon: "LockOpen", title: "Remove the password", blurb: "Save it without one", build: unlock },
+  { group: "Privacy", id: "redact", icon: "SquareDashed", title: "Black out private info", blurb: "Hide words for good", build: redactHelp },
+  { group: "Privacy", id: "flatten", icon: "Layers", title: "Lock answers", blurb: "Nobody can change the fields or notes", build: flatten, chip: () => get("flatten").on },
+  { group: "Details", id: "info", icon: "Info", title: "File details", blurb: "Title, author and more", build: info },
 ];
 
 let chips = [];
@@ -400,7 +401,9 @@ export function renderDocPanel(app, box, opts = {}) {
       h.body.hidden = !isOpen;
     }
   };
+  let lastGroup = "";
   for (const s of SECTIONS) {
+    if (s.group !== lastGroup) { list.append(el("h3.pg-group", {}, s.group)); lastGroup = s.group; }
     const body = el("div.pg-sec-body", { hidden: true });
     const chip = el("span.pg-chipon", { hidden: true }, "On");
     if (s.chip) chips.push({ node: chip, fn: s.chip });

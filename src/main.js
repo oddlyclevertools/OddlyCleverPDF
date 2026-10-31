@@ -20,7 +20,7 @@ import { installSelect, startTyping } from "./tools/select.js";
 import { installPaste, addPicture, pictureDataUrl, textRectsBetween } from "./tools/builtin.js";
 import { buildShell, registerPanel, registerTopAction, registerCommands, openPanel, closePanel, togglePanel, busy, celebrate, isPhone, palette, currentPanel } from "./ui/shell.js";
 import { mountStylebar, registerStyleControls } from "./ui/stylebar.js";
-import { mountHome, registerTask, showResume, taskList } from "./ui/home.js";
+import { mountHome, registerTask, showResume, taskList, registerHomeSection } from "./ui/home.js";
 import { installFind } from "./ui/find.js";
 import { installTheme } from "./ui/theme.js";
 
@@ -39,7 +39,7 @@ const app = {
   pageLines, pageString, clearTextCache, bbox,
   // extension points
   registerTool, registerPanel, registerTopAction, registerCommands, registerTask, registerImporter, listImporters,
-  registerExportStep, registerLayer: viewer.registerLayer, registerStyleControls,
+  registerExportStep, registerLayer: viewer.registerLayer, registerStyleControls, registerHomeSection,
   /** @param {{ id, label, ext, icon, group, blurb?, order?, run: (app, { progress, signal, pageIds? }) => Promise<{ blob: Blob, filename: string } | Array<{blob, filename}>> }} x */
   registerExporter: (x) => { exporters.set(x.id, { order: 50, group: "Documents", ...x }); emit("exporters"); },
   exporters: () => [...exporters.values()].sort((a, b) => a.order - b.order),
@@ -142,7 +142,7 @@ app.save = async ({ share = false } = {}) => {
     b.done(how === "cancelled" ? "" : how === "shared" ? "Shared!" : "Saved to your downloads");
     for (const n of notes || []) toast(n, { ms: 6000 });
     const wasLocked = [...state.files.values()].some((f) => f.password || f.hadPassword);
-    if (wasLocked && !state.extras.pages?.security?.on) toast("Heads up: the file you opened had a password, and this copy doesn't. To lock it again, use Tools → Protect with a password.", { ms: 8000 });
+    if (wasLocked && !state.extras.pages?.security?.on) toast("Heads up: the file you opened had a password, and this copy doesn't. To lock it again, use Tools → Add a password.", { ms: 8000 });
   } catch (e) { console.error("[save]", e); b.fail(e); }
 };
 
@@ -154,12 +154,9 @@ registerTopAction({
 });
 registerTopAction({
   id: "open", order: 10,
-  render: () => el("button.icon-btn", { type: "button", title: "Open or add files (Ctrl+O)", "aria-label": "Open files", on: { click: () => app.pickFiles() } }, icon("FolderOpen", 19)),
+  render: () => el("button.icon-btn.hide-phone-editor", { type: "button", title: "Open or add files (Ctrl+O)", "aria-label": "Open files", on: { click: () => app.pickFiles() } }, icon("FolderOpen", 19)),
 });
-registerTopAction({
-  id: "palette", order: 20,
-  render: () => el("button.icon-btn.hide-phone", { type: "button", title: "Find any tool (Ctrl+K)", "aria-label": "Find a tool", on: { click: () => palette(app) } }, icon("Command", 19)),
-});
+// Ctrl+K still opens "Find a tool"; the top bar keeps only what beginners need.
 
 /**
  * The finished document, built once and opened in pdf.js (cached until the next change).
@@ -257,13 +254,33 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   }
 }
 
-// "Install the app" (Chrome, Edge, Android): the button shows only when the browser offers it.
+// "Get the app": the Windows installer, or the browser's own install (Chrome, Edge, Android),
+// or the Add to Home Screen steps. Hidden inside the desktop app and the installed app.
 let installEvent = null;
-window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; document.body.classList.add("can-install"); });
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; });
+const WIN_EXE = "https://github.com/oddlyclevertools/OddlyCleverPDF/releases/latest/download/OddlyCleverPDF-Setup.exe";
+const inApp = () => !!window.chrome?.webview || window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+if (inApp()) document.body.classList.add("in-app");
+function openGetApp() {
+  const isWin = /Windows/i.test(navigator.userAgent) && !/Phone|Mobile/i.test(navigator.userAgent);
+  const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const opt = (ic, title, text, action) => el("div.getapp-opt", {}, el("span.getapp-icon", {}, icon(ic, 22)),
+    el("div.getapp-words", {}, el("strong", {}, title), el("span", {}, text)), action);
+  const winBtn = el("a.btn.primary", { href: WIN_EXE, rel: "noopener" }, icon("Download", 18), "Download");
+  const addBtn = installEvent ? el("button.btn", { type: "button", on: { click: async () => { const ev = installEvent; installEvent = null; close(); ev.prompt(); await ev.userChoice; } } }, icon("MonitorDown", 18), "Add") : null;
+  const opts = [
+    opt("Monitor", "Windows app", "A normal app for your PC, with its own icon. Free, no account.", winBtn),
+    opt("Smartphone", "This browser", installEvent ? "Add it to this device. It opens in its own window and works offline."
+      : isIos ? "In Safari, tap Share, then “Add to Home Screen”." : "In your browser menu, choose “Install app” or “Add to Home screen”.", addBtn),
+  ];
+  if (!isWin) opts.reverse();
+  const { close } = modal("Get the app", el("div.getapp", {}, el("p.muted", {}, "It's all free. Your files still stay on your device."), ...opts,
+    el("p.muted.small", {}, "Windows may say “Windows protected your PC” the first time. Click “More info”, then “Run anyway”.")));
+}
 registerTopAction({
   id: "install", order: 35,
-  render: () => el("button.btn.small.install-btn.keep-home", { type: "button", title: "Install OddlyClever PDF as an app (works offline)",
-    on: { click: async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; document.body.classList.remove("can-install"); } } },
-  icon("MonitorDown", 16), el("span", {}, "Install app")),
+  render: () => el("button.btn.small.install-btn.keep-home", { type: "button", title: "Get the free app for your computer or phone", on: { click: openGetApp } },
+    icon("MonitorDown", 16), el("span", {}, "Get the app")),
 });
+registerCommands(() => inApp() ? [] : [{ id: "get-app", label: "Get the app (Windows, phone)", group: "App", icon: "MonitorDown", keywords: "install download exe windows desktop offline", run: openGetApp }]);
 emit("ready");

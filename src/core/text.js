@@ -78,3 +78,43 @@ export function blocksOf(line) {
 }
 
 export function clearTextCache() { cache.clear(); }
+
+// ---- where each letter sits ---------------------------------------------------------------------
+
+const MEASURE_FONT = { sans: "Helvetica, Arial, sans-serif", serif: "'Times New Roman', Times, serif", mono: "'Courier New', monospace" };
+let measurer = null;
+
+/**
+ * The x (page space) where character k of a run starts. pdf.js only gives a run's total width, so
+ * the letters are measured in a similar font and scaled to fit (much closer than equal widths,
+ * which drift on proportional fonts). Without a canvas (tests) it falls back to equal widths.
+ */
+export function charX(r, k) {
+  const n = r.str.length;
+  if (k <= 0) return r.x;
+  if (k >= n) return r.x + r.w;
+  if (!r._edges) {
+    try {
+      measurer ||= (typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(8, 8) : document.createElement("canvas")).getContext("2d");
+      measurer.font = `${r.italic ? "italic " : ""}${r.bold ? "700 " : ""}100px ${MEASURE_FONT[r.family] || MEASURE_FONT.sans}`;
+      const edges = [0];
+      for (let i = 1; i <= n; i++) edges.push(measurer.measureText(r.str.slice(0, i)).width);
+      const k2 = r.w / (edges[n] || 1);
+      r._edges = edges.map((e) => e * k2);
+    } catch {
+      r._edges = Array.from({ length: n + 1 }, (_, i) => (r.w * i) / n);
+    }
+  }
+  return r.x + r._edges[k];
+}
+
+/** The character index in a run nearest to page x (for taps). */
+export function charAt(r, x) {
+  let best = 0, bd = Infinity;
+  for (let k = 0; k < r.str.length; k++) {
+    const mid = (charX(r, k) + charX(r, k + 1)) / 2;
+    const d = Math.abs(mid - x);
+    if (d < bd) { bd = d; best = k; }
+  }
+  return best;
+}

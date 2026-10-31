@@ -34,41 +34,41 @@ const BOUND = { w: 100, h: 116 };
 export function renderPagesPanel(app, box) {
   box.classList.add("pg-box");
   const tiles = new Map(); // pageId -> element
-  let multi = false;
   let anchor = null;
   let drag = null;
 
-  const hint = el("p.pg-hint.muted.small", {}, "Tap a page to pick it. Drag a page to move it.");
+  const hint = el("p.pg-hint.muted.small", {}, "");
   const grid = el("div.pg-grid", { role: "list", "aria-label": "All pages" });
   const bar = el("div.pg-drop", { hidden: true });
   grid.append(bar);
   const btn = (name, label, fn, cls = "") => el(`button.pg-act${cls}`, { type: "button", title: label, on: { click: fn } }, icon(name, 20), el("span", {}, label));
-  const need = []; // buttons that only work with a pick
-  const act = (name, label, fn, always) => { const b = btn(name, label, fn); if (!always) need.push(b); return b; };
-  const pickMode = btn("MousePointerClick", "Pick several", () => { multi = !multi; pickMode.classList.toggle("on", multi); });
-  const actions = el("div.pg-actions", {},
-    act("RotateCcw", "Turn left", () => ops.rotate(ops.targets(), -90)),
-    act("RotateCw", "Turn right", () => ops.rotate(ops.targets(), 90)),
-    act("Copy", "Copy", () => { const m = ops.duplicate(ops.targets()); ops.setPicked(m); }),
-    act("Trash2", "Delete", () => { const t = ops.targets(); if (!ops.remove(t)) toast("A PDF needs at least one page, so I kept one.", { error: true }); }),
-    act("ArrowUpToLine", "To start", () => ops.move(ops.targets(), "start")),
-    act("ArrowDownToLine", "To end", () => ops.move(ops.targets(), "end")),
-    act("FileOutput", "Save as new PDF", () => ops.extract(app, ops.targets())),
-    pickMode,
-    act("FilePlus2", "Blank page", async () => {
+  // always there: add pages
+  const adds = el("div.pg-adds", {},
+    btn("FilePlus2", "Blank page", async () => {
       const t = ops.indexesOf(ops.targets());
       const id = await ops.insertBlank(app, t.length ? Math.max(...t) : state.pages.length - 1);
       ops.setPicked([id]);
-    }, true),
-    act("FilePlus", "Add from file", async () => {
+    }, ".pg-add"),
+    btn("FilePlus", "Pages from a file", async () => {
       const t = ops.indexesOf(ops.targets());
       const at = ops.picked.size && t.length ? Math.max(...t) + 1 : state.pages.length;
       const ids = await ops.insertFromFiles(app, at);
       if (ids.length) ops.setPicked(ids);
-    }, true),
-    act("CheckCheck", "Pick all", () => ops.setPicked(state.pages.map((p) => p.id)), true),
-    act("X", "Pick none", () => ops.setPicked([]), true));
-  box.append(hint, actions, grid);
+    }, ".pg-add"));
+  // only once pages are picked: what to do with them
+  const count = el("strong.pg-picked-n", {}, "");
+  const allBtn = el("button.btn.small.ghost", { type: "button", on: { click: () => ops.setPicked(state.pages.map((p) => p.id)) } }, "Pick all");
+  const picked = el("div.pg-picked", { hidden: true },
+    el("div.pg-picked-head", {}, count, allBtn,
+      el("button.btn.small.ghost", { type: "button", on: { click: () => ops.setPicked([]) } }, "Clear")),
+    el("div.pg-actions", {},
+      btn("RotateCw", "Turn", () => ops.rotate(ops.targets(), 90)),
+      btn("Copy", "Copy", () => { const m = ops.duplicate(ops.targets()); ops.setPicked(m); }),
+      btn("Trash2", "Delete", () => { const t = ops.targets(); if (!ops.remove(t)) toast("A PDF needs at least one page, so I kept one.", { error: true }); }),
+      btn("ArrowUpToLine", "Move to start", () => ops.move(ops.targets(), "start")),
+      btn("ArrowDownToLine", "Move to end", () => ops.move(ops.targets(), "end")),
+      btn("FileOutput", "Save as new PDF", () => ops.extract(app, ops.targets()))));
+  box.append(adds, hint, picked, grid);
 
   // ---- tiles ---------------------------------------------------------------------------------
   function makeTile(page) {
@@ -151,8 +151,11 @@ export function renderPagesPanel(app, box) {
   }
   function refreshBar() {
     const n = ops.picked.size;
-    hint.textContent = n ? `${n} of ${state.pages.length} picked` : "Tap a page to pick it. Drag a page to move it.";
-    for (const b of need) b.disabled = !n;
+    hint.hidden = !!n;
+    hint.textContent = "Tap pages to pick them. Drag a page to move it.";
+    picked.hidden = !n;
+    count.textContent = `${n} picked`;
+    allBtn.hidden = n === state.pages.length;
     for (const [id, t] of tiles) {
       const on = ops.picked.has(id);
       t.classList.toggle("on", on);
@@ -169,16 +172,12 @@ export function renderPagesPanel(app, box) {
       ops.setPicked(state.pages.slice(a, b + 1).map((p) => p.id));
       return;
     }
-    if (e.ctrlKey || e.metaKey || multi) {
-      const next = new Set(ops.picked);
-      next.has(id) ? next.delete(id) : next.add(id);
-      anchor = i;
-      ops.setPicked(next);
-      return;
-    }
+    // a tap adds or removes the page, like picking photos on a phone
+    const next = new Set(ops.picked);
+    next.has(id) ? next.delete(id) : next.add(id);
     anchor = i;
-    ops.setPicked([id]);
-    app.viewer.scrollToPage(i);
+    ops.setPicked(next);
+    if (next.has(id)) app.viewer.scrollToPage(i);
   }
 
   // ---- drag to reorder (pointer events: mouse, pen and touch) ----------------------------------

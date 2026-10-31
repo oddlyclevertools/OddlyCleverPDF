@@ -1,7 +1,7 @@
 // The everyday tools: add text, edit the PDF's own text, draw, highlight, shapes, whiteout,
 // redact, sticky notes and pictures.
 import { state, pageById, begin, end, live, select, addObject, uid, putImage, emit, change } from "../core/store.js";
-import { pageLines, blocksOf } from "../core/text.js";
+import { pageLines, blocksOf, charX, charAt } from "../core/text.js";
 import { viewOf } from "../viewer/viewer.js";
 import { registerTool, toolPrefs, useTool } from "./registry.js";
 import { startTyping } from "./select.js";
@@ -175,11 +175,14 @@ export async function textRectsBetween(pageId, a, b) {
     const from = i === i0 ? s.x : -Infinity, to = i === i1 ? e.x : Infinity;
     let x0 = Infinity, x1 = -Infinity;
     for (const r of l.runs) {
-      const cw = r.w / Math.max(1, r.str.length);
-      const rs = Math.max(r.x, from), re = Math.min(r.x + r.w, to);
-      if (re <= rs) continue;
-      const snapS = r.x + Math.floor((rs - r.x) / cw) * cw, snapE = r.x + Math.ceil((re - r.x) / cw) * cw;
-      x0 = Math.min(x0, snapS); x1 = Math.max(x1, Math.min(snapE, r.x + r.w));
+      // whole letters whose middle lies between the two points
+      let ks = -1, ke = -1;
+      for (let k = 0; k < r.str.length; k++) {
+        const mid = (charX(r, k) + charX(r, k + 1)) / 2;
+        if (mid >= from && mid <= to) { if (ks < 0) ks = k; ke = k; }
+      }
+      if (ks < 0) continue;
+      x0 = Math.min(x0, charX(r, ks)); x1 = Math.max(x1, charX(r, ke + 1));
     }
     if (x1 > x0) rects.push({ x: x0, y: l.y, w: x1 - x0, h: l.h });
   }
@@ -214,12 +217,11 @@ registerTool({
       const lines = await pageLines(m.pageId);
       for (const l of lines) for (const r of l.runs) {
         if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) {
-          const cw = r.w / Math.max(1, r.str.length);
-          const k = Math.floor((pt.x - r.x) / cw);
+          const k = charAt(r, pt.x);
           let s = k, e = k;
           while (s > 0 && /\S/.test(r.str[s - 1])) s--;
           while (e < r.str.length - 1 && /\S/.test(r.str[e + 1])) e++;
-          m.obj.rects = [{ x: r.x + s * cw, y: l.y, w: (e - s + 1) * cw, h: l.h }];
+          m.obj.rects = [{ x: charX(r, s), y: l.y, w: charX(r, e + 1) - charX(r, s), h: l.h }];
         }
       }
     } else {
@@ -275,7 +277,7 @@ boxTool("rect", "Box", "Square", 30, () => ({ type: "rect", ...toolPrefs("shapes
 boxTool("ellipse", "Circle", "Circle", 31, () => ({ type: "ellipse", ...toolPrefs("shapes", SHAPE_DEFAULTS) }), { group: "shapes" });
 boxTool("whiteout", "Whiteout", "Eraser", 40, () => ({ type: "whiteout", color: toolPrefs("whiteout", { color: "#ffffff" }).color }),
   { key: "w", hint: "Drag over anything to cover it with white (or any colour)." });
-boxTool("redact", "Redact", "SquareDashed", 45, () => ({ type: "redact" }),
+boxTool("redact", "Black out", "SquareDashed", 45, () => ({ type: "redact" }),
   { key: "r", hint: "Drag over private details. When you save, they are removed for good, not just covered." });
 
 function lineTool(id, label, icon, order) {

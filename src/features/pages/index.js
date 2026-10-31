@@ -44,7 +44,7 @@ export function install(app) {
   T("split", "Split a PDF", "Cut it into smaller files", "Scissors", "orange", "pages", toDoc("split"), { order: 31 });
   T("compress", "Compress", "Make the file smaller", "Minimize2", "mint", "pages", toDoc("compress"), { popular: true, order: 6 });
   T("organise", "Organise pages", "Drag pages into a new order", "LayoutGrid", "violet", "pages", toPages(), { order: 32 });
-  T("rotate", "Rotate pages", "Turn pages the right way up", "RotateCw", "gold", "pages", toPages("Pick the pages, then tap Turn left or Turn right."), { order: 33 });
+  T("rotate", "Rotate pages", "Turn pages the right way up", "RotateCw", "gold", "pages", toPages("Tap the pages to pick them, then tap Turn."), { order: 33 });
   T("delete", "Delete pages", "Throw away pages you don't need", "Trash2", "pink", "pages", toPages("Pick the pages, then tap Delete."), { order: 34 });
   T("extract", "Extract pages", "Save some pages as a new PDF", "FileOutput", "cyan", "pages", toPages("Pick the pages, then tap Save as new PDF."), { order: 35 });
   T("numbers", "Add page numbers", "Number every page", "Hash", "gold", "pages", toDoc("numbers", () => set("numbers", { on: true }, "Turn on page numbers")), { order: 36 });
@@ -78,11 +78,11 @@ export function install(app) {
       sec("watermark", "Add a watermark", "Stamp", "stamp confidential draft", () => set("watermark", { on: true }, "Turn on watermark")),
       sec("numbers", "Add page numbers", "Hash", "number pages", () => set("numbers", { on: true }, "Turn on page numbers")),
       sec("headfoot", "Add a header and footer", "PanelTop", "header footer"),
-      sec("protect", "Protect with a password", "Lock", "encrypt lock secure"),
+      sec("protect", "Add a password", "Lock", "encrypt lock secure"),
       sec("unlock", "Unlock (remove password)", "LockOpen", "decrypt password"),
       sec("crop", "Crop pages", "Crop", "trim margins"),
-      sec("info", "Document info", "Info", "title author metadata properties"),
-      sec("flatten", "Flatten forms", "Layers", "flatten form fields"),
+      sec("info", "File details", "Info", "title author metadata properties"),
+      sec("flatten", "Lock answers", "Layers", "flatten form fields"),
       C("redact", "Redact (black out private info)", "SquareDashed", () => a.useTool("redact"), "hide censor", "Document"),
     ];
   });

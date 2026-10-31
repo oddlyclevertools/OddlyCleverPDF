@@ -4,7 +4,9 @@ I needed to change one number on a PDF, and every site wanted me to sign up, upl
 
 It's free, it runs in your browser, and you don't make an account. Edit, sign, fill in, merge, squash and convert PDFs on your phone or your computer. There's no server: your files never leave your device. No watermark, no daily limit, and it works offline once it's loaded.
 
-**Use it now: [oddlyclevertools.github.io/OddlyCleverPDF](https://oddlyclevertools.github.io/OddlyCleverPDF/)** (works on phones too; tap "Install app" to keep it on your home screen).
+**Use it now: [oddlyclevertools.github.io/OddlyCleverPDF](https://oddlyclevertools.github.io/OddlyCleverPDF/)** (works on phones too).
+
+**Want it as a normal app?** Tap "Get the app" on the site. On Windows you can [download the free installer](https://github.com/oddlyclevertools/OddlyCleverPDF/releases/latest/download/OddlyCleverPDF-Setup.exe): no account, no admin rights needed. On a phone, add it to your home screen from the browser menu.
 
 [![Buy me a tea on Ko-fi](https://img.shields.io/badge/Buy%20me%20a%20tea-Ko--fi-ff2e7e?logo=kofi&logoColor=white)](https://ko-fi.com/oddlyclevertools)
 

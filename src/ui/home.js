@@ -10,7 +10,7 @@ export const GROUPS = [
   ["pages", "Pages"],
   ["convert", "Convert"],
   ["secure", "Protect"],
-  ["ai", "Smart"],
+  ["ai", "AI helper"],
 ];
 
 /**
@@ -22,7 +22,20 @@ export const GROUPS = [
 export function registerTask(t) { tasks.set(t.id, { order: 50, group: "edit", files: "one", color: "pink", ...t }); renderTasks(); }
 export const taskList = () => [...tasks.values()].sort((a, b) => a.order - b.order);
 
-let host, app, grid, resumeBox;
+let host, app, grid, resumeBox, beforeTasks, afterTasks;
+const sections = [];
+/**
+ * A section on the home screen (infographics, news…). order < 50 sits above the task cards,
+ * 50 and up below them. render(app) returns a node.
+ */
+export function registerHomeSection(sec) { sections.push({ order: 60, ...sec }); sections.sort((a, b) => a.order - b.order); renderSections(); }
+function renderSections() {
+  if (!beforeTasks) return;
+  beforeTasks.replaceChildren(); afterTasks.replaceChildren();
+  for (const s of sections) {
+    try { const n = s.render(app); if (n) (s.order < 50 ? beforeTasks : afterTasks).append(n); } catch (e) { console.error(`[home] ${s.id}`, e); }
+  }
+}
 
 export function mountHome(node, theApp) {
   host = node; app = theApp;
@@ -41,17 +54,20 @@ export function mountHome(node, theApp) {
       el("div.hero-words", {},
         el("p.kicker", {}, icon("ShieldCheck", 16), "Free · no sign-up · nothing uploaded"),
         el("h1", {}, "Do anything with a PDF,", el("br"), el("span.scribble", {}, "right here.")),
-        el("p.lead", {}, "Edit, sign, fill, merge, squash and convert. It all runs on your device, on any phone or computer, and you can bring your own AI.")),
+        el("p.lead", {}, "Edit, sign, fill and convert PDFs for free. It works on any phone or computer, and your files never leave it.")),
       drop),
     resumeBox,
+    beforeTasks = el("div.home-sections"),
     el("h2.tasks-title", {}, "What do you want to do?"),
     grid,
+    afterTasks = el("div.home-sections"),
     el("footer.home-foot", {},
       el("p", {}, icon("Lock", 15), " Your files never leave this device. No watermark, no limits, no account."),
       el("p.muted", {}, "OddlyClever PDF is free and ", el("a", { href: "https://github.com/oddlyclevertools/OddlyCleverPDF", target: "_blank", rel: "noopener" }, "open source"),
         ". Made by ", el("a", { href: "https://www.youtube.com/@oddlyclevertools", target: "_blank", rel: "noopener" }, "Oddly Clever Tools"), " · ",
         el("a", { href: "https://ko-fi.com/oddlyclevertools", target: "_blank", rel: "noopener" }, "Buy me a tea"))));
   renderTasks();
+  renderSections();
 }
 
 /** Show (or hide) the "Continue editing" card. */
@@ -74,17 +90,29 @@ function ago(t) {
   return new Date(t).toLocaleDateString();
 }
 
+let showAll = false;
 function renderTasks() {
   if (!grid) return;
   grid.replaceChildren();
   const list = taskList();
+  const more = el("div.task-more", { hidden: !showAll });
   for (const [g, title] of GROUPS) {
     const items = g === "popular" ? list.filter((t) => t.popular) : list.filter((t) => t.group === g);
     if (!items.length) continue;
     const row = el("div.task-row", {}, items.map((t) => el("button.task", { type: "button", dataset: { color: t.color, task: t.id }, on: { click: () => app.runTask(t.id) } },
       el("span.task-icon", {}, icon(t.icon, 24)),
       el("span.task-words", {}, el("strong", {}, t.title), el("small", {}, t.blurb || "")))));
-    grid.append(el("section.task-group", {}, el("h3", {}, title), row));
+    (g === "popular" ? grid : more).append(el("section.task-group", {}, el("h3", {}, title), row));
     stagger(row, { max: 10 });
+  }
+  // the most used jobs first; everything else one tap away (so the page stays short)
+  if (more.childElementCount) {
+    const n = list.length;
+    const btn = el("button.btn.task-all", { type: "button", "aria-expanded": String(showAll), on: { click: () => {
+      showAll = !showAll; more.hidden = !showAll; btn.setAttribute("aria-expanded", String(showAll));
+      btn.replaceChildren(icon(showAll ? "ChevronUp" : "LayoutGrid", 18), showAll ? "Show fewer" : `Show all ${n} tools`);
+      if (showAll) stagger(more, { max: 6 });
+    } } }, icon(showAll ? "ChevronUp" : "LayoutGrid", 18), showAll ? "Show fewer" : `Show all ${n} tools`);
+    grid.append(btn, more);
   }
 }

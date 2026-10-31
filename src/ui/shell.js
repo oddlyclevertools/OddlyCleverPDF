@@ -41,10 +41,13 @@ export function closePanel() {
 }
 export function togglePanel(id) { openPanelId === id ? closePanel() : openPanel(id); }
 
+const MORE = new Set(["stamp", "note", "whiteout", "redact"]); // plus every shape
 function markBelt() {
   for (const b of ui.belt?.querySelectorAll("[data-tool], [data-panel]") || []) {
     b.classList.toggle("on", b.dataset.tool ? b.dataset.tool === state.tool : b.dataset.panel === openPanelId);
   }
+  const mb = ui.belt?.querySelector(".more-btn");
+  if (mb) mb.classList.toggle("on", mb._tools.has(state.tool));
 }
 
 // ---- busy overlay (a paper plane flies while work runs) ---------------------------------------
@@ -189,24 +192,24 @@ function renderBelt() {
   for (const t of tools) { const g = t.group || "edit"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(t); }
   const btn = (t) => el("button.belt-btn", { type: "button", dataset: { tool: t.id }, title: `${t.label}${t.key ? ` (${t.key.toUpperCase()})` : ""}`,
     on: { click: (e) => { useTool(t.id); play(e.currentTarget, "oc-done"); } } }, icon(t.icon, 21), el("span", {}, t.label));
-  for (const t of groups.get("edit") || []) b.append(btn(t));
-  const shapes = groups.get("shapes") || [];
-  if (shapes.length) {
-    // one button for all shapes; it remembers the last one picked
-    let cur = shapes.find((s) => s.id === localStorage.getItem("ocpdf.shape")) || shapes[0];
-    const sb = btn(cur);
-    sb.classList.add("has-more");
-    sb.addEventListener("click", () => {
-      if (state.tool !== cur.id) return;
-      const menu = el("div.shape-menu.oc-enter", {}, shapes.map((s) => el("button.belt-btn", { type: "button", title: s.label, on: { click: () => {
-        cur = s; try { localStorage.setItem("ocpdf.shape", s.id); } catch { /* */ }
-        useTool(s.id); renderBelt(); menu.remove();
-      } } }, icon(s.icon, 20), el("span", {}, s.label))));
-      document.querySelector(".shape-menu")?.remove();
-      sb.after(menu);
-      setTimeout(() => document.addEventListener("pointerdown", function off(ev) { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener("pointerdown", off); } }), 0);
+  // the everyday tools stay on the belt; the rest sit one tap away under "More"
+  const extra = [...(groups.get("edit") || []).filter((t) => MORE.has(t.id)), ...(groups.get("shapes") || [])];
+  for (const t of groups.get("edit") || []) if (!MORE.has(t.id)) b.append(btn(t));
+  if (extra.length) {
+    const mb = el("button.belt-btn.more-btn.has-more", { type: "button", title: "More tools", "aria-haspopup": "true" }, icon("Shapes", 21), el("span", {}, "More"));
+    mb._tools = new Set(extra.map((t) => t.id));
+    mb.addEventListener("click", () => {
+      if (document.querySelector(".more-menu")) { document.querySelector(".more-menu").remove(); return; }
+      const menu = el("div.shape-menu.more-menu.oc-enter", { role: "menu" }, extra.map((t) => el("button.belt-btn", { type: "button", role: "menuitem", title: t.hint || t.label,
+        class: state.tool === t.id ? "on" : null, on: { click: () => { useTool(t.id); menu.remove(); } } }, icon(t.icon, 20), el("span", {}, t.label))));
+      mb.after(menu);
+      if (!isPhone()) { // the belt scrolls (and so clips), so pin the menu beside the button
+        const r = mb.getBoundingClientRect();
+        Object.assign(menu.style, { position: "fixed", left: `${r.right + 8}px`, top: `${Math.min(r.top, innerHeight - menu.offsetHeight - 12)}px` });
+      }
+      setTimeout(() => document.addEventListener("pointerdown", function off(ev) { if (!menu.contains(ev.target) && !mb.contains(ev.target)) { menu.remove(); document.removeEventListener("pointerdown", off); } }), 0);
     });
-    b.append(sb);
+    b.append(mb);
   }
   for (const [g, list] of groups) if (g !== "edit" && g !== "shapes") list.forEach((t) => b.append(btn(t)));
   const ps = [...panels.values()].filter((p) => p.belt).sort((a, c) => a.order - c.order);

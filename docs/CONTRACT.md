@@ -43,6 +43,7 @@ If you need a core change, write it in your final report instead.
 - `app.registerImporter({ id, label, exts, mimes?, toPdf(file, {progress}) => Uint8Array })` opens a file type (the converter must make PDF bytes). Picture importing is in core (one picture becomes one page). You may register a better `image-basic` replacement.
 - `app.registerLayer((page, view) => node | null)` adds a layer to every page sheet, sized to the sheet. Position children with `page space × state.zoom` px, and redraw on the `zoom` event.
 - `app.registerStyleControls(({obj, tool, row}) => node | null)` adds controls to the style bar.
+- `app.registerHomeSection({ id, order, render(app) => node })` adds a block to the home screen (order < 50 above the task cards, otherwise below).
 - `app.registerCommands((app) => [{id,label,group,icon,keywords,run}])` adds Ctrl+K entries. `app.registerTopAction({id, order, render})` adds a top-bar button (use sparingly).
 - **Long jobs:** `const b = app.busy("Squashing your PDF")`, then `b.set(0.5, "Pictures…")`, `b.done("Saved 2.1 MB")` (confetti) or `b.fail(err)`. `b.signal` is the Cancel signal.
 - **Saving files for the user:** `app.deliver(bytesOrBlob, filename, {type, share})` and `app.outName(ext, suffix)`.

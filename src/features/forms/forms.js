@@ -115,7 +115,7 @@ export function installForms(app) {
   let banner = null, dismissedFor = "";
   const docKey = () => [...state.files.keys()].join(",");
   const bannerText = el("span.fs-banner-text");
-  const flat = el("input", { type: "checkbox", id: "fs-flat", on: { change: () => store.change("Flatten forms", () => { state.extras.forms = { ...(state.extras.forms || {}), flatten: flat.checked }; }, { pages: [] }) } });
+  const flat = el("input", { type: "checkbox", id: "fs-flat", on: { change: () => store.change("Lock answers", () => { state.extras.forms = { ...(state.extras.forms || {}), flatten: flat.checked }; }, { pages: [] }) } });
   const nextBtn = el("button.btn.small.primary.fs-next", { type: "button", on: { click: () => nextField() } }, "Next field", icon("ArrowRight", 16));
   const closeBtn = el("button.icon-btn.fs-x", { type: "button", "aria-label": "Hide this", title: "Hide", on: { click: () => { dismissedFor = docKey(); banner.classList.remove("show"); } } }, icon("X", 16));
 
@@ -124,7 +124,7 @@ export function installForms(app) {
     if (!host) return;
     if (!banner) {
       banner = el("div.fs-banner", { role: "status" }, icon("TextCursorInput", 20), bannerText, nextBtn,
-        el("label.fs-flat", { for: "fs-flat", title: "Turn the fields into plain text on the page, so nobody can change them" }, flat, el("span", {}, "Flatten when I save")), closeBtn);
+        el("label.fs-flat", { for: "fs-flat", title: "Turn the fields into plain text on the page, so nobody can change them" }, flat, el("span", {}, "Lock answers when I save")), closeBtn);
       host.append(banner);
     }
     const fields = fillableFields(await allWidgets());

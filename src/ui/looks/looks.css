@@ -1,0 +1,20 @@
+/* The live background sits behind everything; the frame, cards and pages stay solid on top. */
+.backdrop { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 0; pointer-events: none; display: block; }
+#app { position: relative; z-index: 1; }
+body { background: var(--desk); }
+
+/* the picker */
+.lk { display: flex; flex-direction: column; gap: 14px; }
+.lk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.lk-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 8px 8px 10px; border: 2px solid var(--edge); border-radius: 16px;
+  background: var(--card); box-shadow: var(--shadow-hard); transition: transform .22s var(--spring), box-shadow .2s var(--ease); }
+.lk-card:hover { transform: translate(-2px, -3px) rotate(-.5deg); box-shadow: var(--shadow-lift); }
+.lk-card.on { outline: 3px solid var(--accent); outline-offset: 2px; }
+.lk-prev { width: 100%; aspect-ratio: 5 / 3; height: auto; border-radius: 10px; border: 2px solid var(--edge); display: block; background: #222; }
+.lk-name { display: flex; align-items: center; gap: 6px; font-weight: 750; font-size: 15px; margin-top: 4px; }
+.lk-name .icon { color: var(--accent); }
+.lk-card small { color: var(--muted); font-size: 12.5px; line-height: 1.3; }
+.lk-sw { display: flex; gap: 4px; margin-top: 2px; }
+.lk-sw i { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--edge); }
+.lk-opts { display: flex; flex-wrap: wrap; gap: 10px 22px; }
+@media (max-width: 760px) { .lk-grid { grid-template-columns: 1fr 1fr; gap: 10px; } .lk-card small { display: none; } }

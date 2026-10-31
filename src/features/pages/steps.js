@@ -206,7 +206,7 @@ export function installSteps(app) {
     },
   });
   app.registerExportStep({
-    id: "pg-flatten", label: "Flattening", order: 150,
+    id: "pg-flatten", label: "Locking answers", order: 150,
     run(ctx) {
       if (!get("flatten").on) return;
       try {
