@@ -48,7 +48,9 @@ export function mountHome(node, theApp) {
     grid,
     el("footer.home-foot", {},
       el("p", {}, icon("Lock", 15), " Your files never leave this device. No watermark, no limits, no account."),
-      el("p.muted", {}, "OddlyClever PDF is free and open source. Made by Oddly Clever Tools.")));
+      el("p.muted", {}, "OddlyClever PDF is free and ", el("a", { href: "https://github.com/oddlyclevertools/OddlyCleverPDF", target: "_blank", rel: "noopener" }, "open source"),
+        ". Made by ", el("a", { href: "https://www.youtube.com/@oddlyclevertools", target: "_blank", rel: "noopener" }, "Oddly Clever Tools"), " · ",
+        el("a", { href: "https://ko-fi.com/oddlyclevertools", target: "_blank", rel: "noopener" }, "Buy me a tea"))));
   renderTasks();
 }
 
