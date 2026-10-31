@@ -60,7 +60,15 @@ export function installScan(app) {
     const stop = () => { stream?.getTracks().forEach((t) => t.stop()); stream = null; };
     const close = () => { stop(); root.classList.remove("show"); document.body.classList.remove("fs-scanning"); setTimeout(() => root.remove(), 200); sheet = null; };
     const fileIn = (capture) => el("input", { type: "file", accept: "image/*", multiple: !capture, capture: capture ? "environment" : null, hidden: true,
-      on: { change: async (e) => { for (const f of e.target.files) await addFile(f); e.target.value = ""; if (view === "camera" && shots.length) toast(`${shots.length} page${shots.length > 1 ? "s" : ""} so far`, { ms: 1500 }); } } });
+      on: { change: async (e) => {
+        for (const f of e.target.files) await addFile(f);
+        e.target.value = "";
+        if (view !== "camera" || !shots.length) return;
+        showCamera.refreshCount?.();
+        // no live camera (a computer, or permission refused): the photos are the scan, so review them
+        if (!stream) { showReview(); return; }
+        toast(`${shots.length} page${shots.length > 1 ? "s" : ""} so far`, { ms: 1500 });
+      } } });
 
     async function addFile(file) {
       try { const bmp = await createImageBitmap(file); addShot(bmp); bmp.close?.(); }

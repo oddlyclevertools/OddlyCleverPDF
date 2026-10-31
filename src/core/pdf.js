@@ -14,6 +14,7 @@ const OPTS = {
   wasmUrl: `${BASE}pdfjs/wasm/`,
   iccUrl: `${BASE}pdfjs/iccs/`,
   isEvalSupported: false,
+  fontExtraProperties: true, // real font names, serif and monospace flags (for Edit text's font match)
   enableXfa: false,
 };
 
@@ -76,12 +77,30 @@ export async function pageToCanvas(pdf, index, { width = 300, scale } = {}) {
   return canvas;
 }
 
-const FAMILY = (style, fontName) => {
-  const f = `${style?.fontFamily || ""} ${fontName || ""}`.toLowerCase();
-  if (/mono|courier|consol/.test(f)) return "mono";
-  if (/serif|times|georgia|garamond|minion|cambria|book/.test(f) && !/sans/.test(f)) return "serif";
+const FAMILY = (style, fontName, font) => {
+  const f = `${style?.fontFamily || ""} ${fontName || ""} ${font?.name || ""}`.toLowerCase();
+  if (font?.isMonospace || /mono|courier|consol/.test(f)) return "mono";
+  if (/serif|times|georgia|garamond|minion|cambria|book|merriweather|lora|playfair|baskerville/.test(f) && !/sans/.test(f)) return "serif";
+  if (font?.isSerifFont && !/sans|inter|arial|helvetica|roboto|calibri|segoe/.test(f)) return "serif";
   return "sans";
 };
+
+/**
+ * pdf.js names a run's font by an internal id; the loaded font (with its real name and bold/italic
+ * flags) appears in page.commonObjs once the page's operators have been read.
+ */
+async function loadedFonts(page, ids) {
+  const out = new Map();
+  const look = () => {
+    for (const id of ids) {
+      if (out.has(id) || !page.commonObjs.has(id)) continue;
+      try { out.set(id, page.commonObjs.get(id)); } catch { /* not ready */ }
+    }
+  };
+  look();
+  if (out.size < ids.size) { try { await page.getOperatorList(); look(); } catch { /* fall back to names */ } }
+  return out;
+}
 
 /**
  * The text on a page as runs with boxes in OUR page space (top-left, y down, points).
@@ -92,6 +111,7 @@ export async function pageText(pdf, index) {
   const vp = page.getViewport({ scale: 1, rotation: 0 });
   const tc = await page.getTextContent({ includeMarkedContent: false });
   const out = [];
+  const fonts = await loadedFonts(page, new Set(tc.items.map((it) => it.fontName).filter(Boolean)));
   for (const it of tc.items) {
     if (!("str" in it) || !it.str) continue;
     const tx = pdfjs.Util.transform(vp.transform, it.transform);
@@ -100,10 +120,13 @@ export async function pageText(pdf, index) {
     const ascent = style?.ascent ?? 0.8;
     const x = tx[4];
     const y = tx[5] - size * ascent; // top of the glyph box
-    const name = String(it.fontName || "") + " " + String(style?.fontFamily || "");
+    const font = fonts.get(it.fontName);
+    const name = `${it.fontName || ""} ${style?.fontFamily || ""} ${font?.name || ""}`;
     out.push({
       str: it.str, x, y, w: it.width * (vp.scale || 1), h: size, size,
-      family: FAMILY(style, it.fontName), bold: /bold|black|heavy|semibold/i.test(name), italic: /italic|oblique/i.test(name),
+      family: FAMILY(style, it.fontName, font),
+      bold: Boolean(font?.bold || font?.black) || /bold|black|heavy|semibold/i.test(name),
+      italic: Boolean(font?.italic) || /italic|oblique/i.test(name),
       dir: it.dir, eol: !!it.hasEOL,
     });
   }

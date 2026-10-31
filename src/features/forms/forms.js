@@ -129,10 +129,13 @@ export function installForms(app) {
     }
     const fields = fillableFields(await allWidgets());
     if (!fields.length || !state.pages.length || dismissedFor === docKey()) { banner.classList.remove("show"); return; }
-    const left = fields.filter((f) => isEmptyValue(f.name in state.form ? state.form[f.name] : f.initial)).length;
-    bannerText.textContent = left === fields.length
-      ? `This PDF has ${fields.length} field${fields.length > 1 ? "s" : ""} to fill.`
-      : left ? `${left} of ${fields.length} fields still to fill.` : "All fields are filled in. Nice!";
+    // an unticked box is an answer too ("no pets"), so only boxes you type or pick in are counted
+    const counted = fields.filter((f) => f.kind !== "checkbox");
+    const total = counted.length || fields.length;
+    const left = counted.filter((f) => isEmptyValue(f.name in state.form ? state.form[f.name] : f.initial)).length;
+    bannerText.textContent = left === total
+      ? `This PDF has ${total} field${total > 1 ? "s" : ""} to fill.`
+      : left ? `${left} of ${total} fields still to fill.` : "All fields are filled in. Nice!";
     nextBtn.hidden = !left;
     flat.checked = !!state.extras.forms?.flatten;
     banner.classList.add("show");

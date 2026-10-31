@@ -48,16 +48,6 @@ export function cellsOf(line) {
   return cells;
 }
 
-function clusters(vals, tol) {
-  const s = [...vals].sort((a, b) => a - b);
-  const out = [];
-  for (const v of s) {
-    const c = out[out.length - 1];
-    if (c && v - c.mean <= tol) { c.n++; c.mean += (v - c.mean) / c.n; } else out.push({ mean: v, n: 1 });
-  }
-  return out;
-}
-
 /** Find tables among a page's lines. Returns [{ y, bottom, x, x1, rows: [[runs]], lines: Set }]. */
 export function findTables(lines) {
   const sorted = [...lines].sort((a, b) => a.y - b.y || a.x - b.x);
@@ -81,19 +71,33 @@ export function findTables(lines) {
 
 function buildTable(group) {
   const size = median(group.map((g) => g.line.size)) || 10;
-  const tol = size * 0.5 + 2;
-  const left = clusters(group.flatMap((g) => g.cells.map((c) => c.x)), tol);
-  const right = clusters(group.flatMap((g) => g.cells.map((c) => c.x1)), tol);
-  const useRight = right.length < left.length;
-  const chosen = useRight ? right : left;
-  const cols = chosen.map((c) => c.mean);
+  const all = group.flatMap((g) => g.cells);
+  const x0 = Math.min(...all.map((c) => c.x)), x1 = Math.max(...all.map((c) => c.x1));
+  // Columns are runs of cells whose spans overlap, row after row. That keeps left-aligned words
+  // and right-aligned money in their own columns even when headers and values differ in width.
+  // Very wide cells (a title across the table) don't get to join two columns together.
+  const pad = size * 0.25;
+  const spans = all.filter((c) => c.x1 - c.x < (x1 - x0) * 0.45).map((c) => [c.x - pad, c.x1 + pad]).sort((a, b) => a[0] - b[0]);
+  const cols = [];
+  for (const [a, b] of spans) {
+    const last = cols[cols.length - 1];
+    if (last && a <= last.b) { last.b = Math.max(last.b, b); last.n++; } else cols.push({ a, b, n: 1 });
+  }
   if (cols.length < 2) return null;
-  if (chosen.filter((c) => c.n >= 2).length < 2) return null; // two lines with a gap are not a table
-  const nearest = (v) => { let bi = 0; for (let i = 1; i < cols.length; i++) if (Math.abs(cols[i] - v) < Math.abs(cols[bi] - v)) bi = i; return bi; };
+  if (cols.filter((c) => c.n >= 2).length < 2) return null; // two lines with a gap are not a table
+  const colOf = (c) => {
+    let bi = 0, best = -Infinity;
+    cols.forEach((col, i) => {
+      const overlap = Math.min(col.b, c.x1) - Math.max(col.a, c.x);
+      const score = overlap > 0 ? overlap : -Math.min(Math.abs(col.a - c.x), Math.abs(col.b - c.x1));
+      if (score > best) { best = score; bi = i; }
+    });
+    return bi;
+  };
   const out = group.map((g) => {
     const row = Array.from({ length: cols.length }, () => []);
     for (const c of g.cells) {
-      const i = nearest(useRight ? c.x1 : c.x);
+      const i = colOf(c);
       if (row[i].length) row[i].push({ str: " ", size: c.size });
       row[i].push(...c.runs);
     }

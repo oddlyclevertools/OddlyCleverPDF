@@ -63,6 +63,8 @@ export function blocksOf(line) {
   const out = [];
   let cur = null;
   for (const r of line.runs) {
+    // pdf.js fills a column gap with a wide " " run; that's a break between cells, not a word space
+    if (!r.str.trim() && r.w > r.size * 1.6) { cur = null; continue; }
     if (cur && r.x - (cur.x + cur.w) < r.size * 1.6) {
       cur.runs.push(r);
       cur.w = Math.max(cur.x + cur.w, r.x + r.w) - cur.x;
@@ -73,8 +75,15 @@ export function blocksOf(line) {
       out.push(cur);
     }
   }
-  for (const b of out) b.text = joinRuns(b.runs);
-  return out;
+  for (const b of out) {
+    // trailing or leading spaces don't belong to the phrase
+    while (b.runs.length > 1 && !b.runs.at(-1).str.trim()) b.runs.pop();
+    while (b.runs.length > 1 && !b.runs[0].str.trim()) b.runs.shift();
+    b.x = Math.min(...b.runs.map((r) => r.x));
+    b.w = Math.max(...b.runs.map((r) => r.x + r.w)) - b.x;
+    b.text = joinRuns(b.runs);
+  }
+  return out.filter((b) => b.text.trim());
 }
 
 export function clearTextCache() { cache.clear(); }

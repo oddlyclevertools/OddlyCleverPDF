@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { unzipSync, strFromU8 } from "fflate";
 import { explodeRuns, cellsOf, findTables, analyzeDocument, pageGrid } from "../../src/features/convert/analyze.js";
-import { buildXlsx, buildCsv, asNumber, colName } from "../../src/features/convert/write-xlsx.js";
+import { buildXlsx, buildCsv, asNumber, asMoney, colName } from "../../src/features/convert/write-xlsx.js";
 import { xlsxToSheets, csvParse, rtfToBlocks, sheetsToBlocks } from "../../src/features/convert/readers.js";
 import { markdownToHtml, inline } from "../../src/features/convert/md.js";
 import { toTxt, toMarkdown, toHtml, toRtf } from "../../src/features/convert/write-text.js";
@@ -62,6 +62,9 @@ describe("spreadsheets", () => {
     expect(asNumber("1,234.50")).toBe(1234.5);
     expect(asNumber("007")).toBeNull();
     expect(asNumber("12 apples")).toBeNull();
+    expect(asMoney("£1,234.50")).toEqual({ n: 1234.5, sym: "£" });
+    expect(asMoney("-$5")).toEqual({ n: -5, sym: "$" });
+    expect(asMoney("£ apples")).toBeNull();
     expect(colName(27)).toBe("AB");
   });
   it("writes an xlsx that reads back", () => {

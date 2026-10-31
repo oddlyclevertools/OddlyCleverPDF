@@ -52,7 +52,7 @@ export function install(app) {
   T("crop", "Crop pages", "Trim the edges off", "Crop", "orange", "pages", toDoc("crop"), { order: 38 });
   T("protect", "Protect with password", "Lock your PDF", "Lock", "pink", "secure", toDoc("protect"), { order: 40 });
   T("unlock", "Unlock a PDF", "Take the password off", "LockOpen", "mint", "secure", toDoc("unlock"), { order: 41 });
-  T("redact", "Redact", "Black out private info for real", "SquareDashed", "cyan", "secure", async (a, files) => {
+  T("redact", "Black out", "Hide private info for good", "SquareDashed", "cyan", "secure", async (a, files) => {
     if (await opened(a, files)) a.useTool("redact");
   }, { order: 42 });
 

@@ -16,6 +16,16 @@ export function asNumber(s) {
   return Number.isFinite(n) ? n : null;
 }
 
+const CURRENCY = ["£", "$", "€"];
+/** "£1,234.50" -> { n: 1234.5, sym: "£" }; anything else -> null. Money stays a number you can add up. */
+export function asMoney(s) {
+  if (typeof s !== "string") return null;
+  const m = /^(-)?\s*([£$€])\s*(.+)$/.exec(s.trim());
+  if (!m) return null;
+  const n = asNumber(m[3]);
+  return n == null ? null : { n: m[1] ? -n : n, sym: m[2] };
+}
+
 export function colName(i) {
   let s = "";
   for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s;
@@ -46,9 +56,11 @@ export function buildXlsx(sheets) {
         const v = typeof c === "object" ? c.v : c;
         const ref = `${colName(ci)}${ri + 1}`;
         const style = bold ? ' s="1"' : "";
-        const n = asNumber(v);
+        const n = asNumber(v), money = n == null ? asMoney(v) : null;
         widths[ci] = Math.max(widths[ci] || 6, Math.min(60, String(v).length + 2));
         if (n != null) return `<c r="${ref}"${style}><v>${n}</v></c>`;
+        // styles 2-4: £ $ € money, 5-7: the same in bold (see styles.xml below)
+        if (money) return `<c r="${ref}" s="${2 + CURRENCY.indexOf(money.sym) + (bold ? 3 : 0)}"><v>${money.n}</v></c>`;
         return `<c r="${ref}" t="s"${style}><v>${sst(xmlSafe(String(v)))}</v></c>`;
       }).join("");
       return `<row r="${ri + 1}">${cells}</row>`;
@@ -61,7 +73,7 @@ export function buildXlsx(sheets) {
   files["_rels/.rels"] = strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
   files["xl/workbook.xml"] = strToU8(`${head}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${names.map((n, i) => `<sheet name="${esc(n).replace(/"/g, "&quot;")}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`);
   files["xl/_rels/workbook.xml.rels"] = strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId${sheets.length + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`);
-  files["xl/styles.xml"] = strToU8(`${head}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>`);
+  files["xl/styles.xml"] = strToU8(`${head}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="3"><numFmt numFmtId="164" formatCode="&quot;£&quot;#,##0.00"/><numFmt numFmtId="165" formatCode="&quot;$&quot;#,##0.00"/><numFmt numFmtId="166" formatCode="&quot;€&quot;#,##0.00"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/><xf numFmtId="165" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/><xf numFmtId="166" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs></styleSheet>`);
   files["xl/sharedStrings.xml"] = strToU8(`${head}<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${strings.length}" uniqueCount="${strings.length}">${strings.map((s) => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join("")}</sst>`);
   return zipSync(files, { level: 6 });
 }

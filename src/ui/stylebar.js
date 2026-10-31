@@ -69,8 +69,8 @@ function render() {
     if (one) row.append(el("button.sb-btn.wide", { type: "button", on: { click: () => startTyping(one.id) } }, icon("Pencil", 15), "Type"));
     if (one?.cover) row.append(el("label.sb-chip", { title: "The patch that hides the old words" }, "Patch", el("input", { type: "color", value: one.cover.color || "#ffffff",
       on: { input: (e) => set({ cover: { ...one.cover, color: e.target.value } }, "Patch colour") } })));
-    if (one?.cover) row.append(el("span.sb-note.sb-warn", { title: "Edit text paints over the old words and types the new ones. The old words are still inside the file, so someone could copy them out. For private details, use Redact: it removes them for good." },
-      icon("Info", 15), "Old words are covered, not erased. Private? Use Redact."));
+    if (one?.cover) row.append(el("span.sb-note.sb-warn", { title: "Edit text paints over the old words and types the new ones. The old words are still inside the file, so someone could copy them out. For private details, use Black out: it removes them for good." },
+      icon("Info", 15), "Old words are covered, not erased. Private? Use Black out."));
   } else if (kind === "ink") {
     row.append(label("Pen"), sizeStepper(val.width || 2.5, (v) => set({ width: v }, "Pen size"), { min: 0.5, max: 30, step: 0.5 }),
       colorRow(val.color, (c) => set({ color: c }, "Pen colour")), opacity(val, set));

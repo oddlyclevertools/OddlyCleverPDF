@@ -17,7 +17,7 @@ export const STARTERS = [
   { label: "Translate to…", text: "Translate this PDF into ", fill: true, icon: "Languages" },
   { label: "Fill this form for me", text: "Fill in the form fields in this PDF. Ask me for anything you don't know instead of guessing. My details: ", fill: true, icon: "ClipboardPen" },
   { label: "Highlight the important parts", text: "Highlight the most important sentences and numbers in this PDF, then tell me what you marked.", icon: "Highlighter" },
-  { label: "Redact personal details", text: "Redact personal details in this PDF: email addresses, phone numbers, bank numbers and card numbers. Tell me what you covered.", icon: "EyeOff" },
+  { label: "Black out personal details", text: "Redact personal details in this PDF: email addresses, phone numbers, bank numbers and card numbers. Tell me what you covered.", icon: "EyeOff" },
   { label: "Turn this into a one-page summary page", text: "Write a one-page summary of this PDF and add it as a new first page.", icon: "FilePlus2" },
 ];
 

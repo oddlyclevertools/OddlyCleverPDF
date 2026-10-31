@@ -67,4 +67,11 @@ describe("text lines", () => {
     const [line] = groupLines([run("Widget", 10, 10), run("2", 120, 10), run("100.00", 200, 10)]);
     expect(blocksOf(line).map((b) => b.text)).toEqual(["Widget", "2", "100.00"]);
   });
+  it("treats pdf.js's wide gap-filling space run as a break between cells", () => {
+    const run = (str, x, w) => ({ str, x, y: 0, w, h: 13, size: 13 });
+    const [line] = groupLines([run("Total due", 360, 60), run(" ", 420, 65), run("£468.00", 484, 56)]);
+    const blocks = blocksOf(line);
+    expect(blocks.map((b) => b.text)).toEqual(["Total due", "£468.00"]);
+    expect(blocks[1].x).toBe(484);
+  });
 });

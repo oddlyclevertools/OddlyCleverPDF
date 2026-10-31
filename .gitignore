@@ -4,3 +4,6 @@ tools/_*
 test-results/
 playwright-report/
 *.log
+
+# launch video work (clips, voice, renders) stays local
+showcase/

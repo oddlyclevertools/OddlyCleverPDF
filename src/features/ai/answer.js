@@ -23,7 +23,13 @@ function inline(text, onJump, pageCount) {
   };
   for (const c of findCites(text)) {
     if (c.page < 1 || (pageCount && c.page > pageCount)) continue;
-    push(text.slice(last, c.start));
+    // "(p. 1)" becomes just the chip: brackets round a chip read as "((p. 1))"
+    let before = text.slice(last, c.start);
+    if (/\(\s*$/.test(before) && /^\s*\)/.test(text.slice(c.end))) {
+      before = before.replace(/\s*\(\s*$/, " ");
+      c.end += text.slice(c.end).match(/^\s*\)/)[0].length;
+    }
+    push(before);
     nodes.push(el("button.ai-cite", { type: "button", title: `Go to page ${c.page}`, on: { click: () => onJump(c.page) } }, c.text.replace(/^pages?\b/i, "p.").replace(/\s+/g, " ")));
     last = c.end;
   }
