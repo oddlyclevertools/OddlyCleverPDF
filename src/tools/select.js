@@ -1,24 +1,28 @@
-// Select: press an edit to pick it, drag to move, pull a corner to resize, drag a line's ends,
-// double-press text to type. Presses on the page itself fall through to the PDF's own text, so
-// you can select and copy it. Keyboard: Delete, Ctrl+D, Ctrl+C/V, arrows, Esc.
+// Select: press an edit to pick it, drag to move (snapping to the page, other edits and the text
+// margins; Ctrl moves freely), pull a corner to resize, drag a line's ends, double-press text to type.
+// Pressing the PDF's own words and dragging lifts that line into an edit and moves it (Alt-drag
+// selects the words instead; double-click opens them for typing). Hidden and locked edits are
+// skipped. Keyboard: Delete, Ctrl+D, Ctrl+C/V, arrows (Shift = 10), Ctrl+] / Ctrl+[ stacking, Esc.
 import { state, findObject, begin, end, live, select, removeObjects, change, uid, pageById, emit } from "../core/store.js";
 import { toPage, viewOf, currentIndex } from "../viewer/viewer.js";
-import { bbox, resizable } from "../viewer/objects.js";
-import { registerTool } from "./registry.js";
+import { bbox, resizable, setGuides } from "../viewer/objects.js";
+import { pageLines } from "../core/text.js";
+import { registerTool, toolList } from "./registry.js";
+import { unionBox, snapTargets, snapBox, alignDeltas, distributeDeltas, restack } from "../features/layers/logic.js";
 
-registerTool({ id: "select", label: "Select", icon: "MousePointer2", mode: "none", order: 0, key: "v", hint: "Pick an edit to move or change it. Press the page to select its text." });
+registerTool({ id: "select", label: "Select", icon: "MousePointer2", mode: "none", order: 0, key: "v", hint: "Drag anything to move it, even the PDF's own words. Hold Alt to select words instead." });
 
 const HANDLE = 14; // px
 
 /** The topmost object at a page point, and which handle (if any). */
-function hit(pageId, pt, clientX, clientY) {
+function hit(pageId, pt, coarse) {
   const page = pageById(pageId);
   if (!page) return null;
-  const z = state.zoom, tol = HANDLE / z;
+  const z = state.zoom, tol = (coarse ? HANDLE : HANDLE * 0.6) / z; // a mouse is precise: keep handles off short text
   // handles of the current selection first
   if (state.selection.length === 1) {
     const f = findObject(state.selection[0]);
-    if (f && f.page.id === pageId) {
+    if (f && f.page.id === pageId && !f.obj.locked) {
       const o = f.obj;
       if (o.type === "line" || o.type === "arrow") {
         if (Math.hypot(pt.x - o.x1, pt.y - o.y1) < tol) return { obj: o, handle: "p1" };
@@ -35,6 +39,7 @@ function hit(pageId, pt, clientX, clientY) {
   }
   for (let i = page.objects.length - 1; i >= 0; i--) {
     const o = page.objects[i];
+    if (o.hidden || o.locked) continue;
     let b = bbox(o);
     if (o.type === "text") { const n = viewOf(pageId)?.objects.querySelector(`[data-id="${o.id}"]`); if (n) b = { ...b, h: Math.max(b.h, n.offsetHeight / z) }; }
     const pad = (o.type === "line" || o.type === "arrow" || o.type === "ink") ? 6 / z : 0;
@@ -60,10 +65,16 @@ function onDown(e) {
   if (e.target.closest?.("[contenteditable=true]")) return; // typing
   const pageId = pageEl.dataset.id;
   const pt = toPage(pageId, e.clientX, e.clientY);
-  const h = hit(pageId, pt, e.clientX, e.clientY);
+  const h = hit(pageId, pt, e.pointerType !== "mouse");
   if (!h) {
     if (state.selection.length) select([]);
-    return; // native text selection
+    // the PDF's own words: a drag lifts the line and moves it; Alt keeps native text selection
+    if (e.altKey || !e.target.closest?.(".textLayer span")) return;
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    drag = { pageId, start: pt, lift: true, id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY };
+    pageEl.setPointerCapture?.(e.pointerId);
+    return;
   }
   e.preventDefault();
   window.getSelection()?.removeAllRanges();
@@ -71,7 +82,7 @@ function onDown(e) {
     if (e.shiftKey) select([...state.selection, h.obj.id]); else if (!state.selection.includes(h.obj.id)) select([h.obj.id]);
   }
   const objs = state.selection.map((id) => findObject(id)?.obj).filter(Boolean);
-  drag = { pageId, start: pt, handle: h.handle, obj: h.obj, orig: JSON.parse(JSON.stringify(objs)), objs, id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY, t: Date.now() };
+  drag = { pageId, start: pt, handle: h.handle, obj: h.obj, orig: JSON.parse(JSON.stringify(objs)), objs: objs.filter((o) => !o.locked), id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY, t: Date.now() };
   pageEl.setPointerCapture?.(e.pointerId);
   begin();
 }
@@ -80,23 +91,82 @@ function onMove(e) {
   if (!drag || e.pointerId !== drag.id) return;
   if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
   drag.moved = true;
-  const pt = toPage(drag.pageId, e.clientX, e.clientY);
-  const dx = pt.x - drag.start.x, dy = pt.y - drag.start.y;
-  const o = drag.obj, oo = drag.orig.find((x) => x.id === o.id);
-  if (drag.handle === "p1" || drag.handle === "p2") {
-    const k = drag.handle === "p1" ? 1 : 2;
-    o[`x${k}`] = oo[`x${k}`] + dx; o[`y${k}`] = oo[`y${k}`] + dy;
-  } else if (drag.handle) {
-    resize(o, oo, drag.handle, dx, dy, e.shiftKey);
-  } else {
-    drag.objs.forEach((obj, i) => moveBy(obj, drag.orig[i], dx, dy));
-  }
-  live([drag.pageId]);
+  drag.last = { clientX: e.clientX, clientY: e.clientY, free: e.ctrlKey || e.metaKey, shiftKey: e.shiftKey };
+  if (drag.lift) { drag.lifting ||= lift(drag); return; }
+  applyMove(drag, drag.last);
 }
+
+function applyMove(d, e) {
+  const pt = toPage(d.pageId, e.clientX, e.clientY);
+  let dx = pt.x - d.start.x, dy = pt.y - d.start.y;
+  const o = d.obj, oo = d.orig.find((x) => x.id === o.id);
+  if (d.handle === "p1" || d.handle === "p2") {
+    const k = d.handle === "p1" ? 1 : 2;
+    o[`x${k}`] = oo[`x${k}`] + dx; o[`y${k}`] = oo[`y${k}`] + dy;
+  } else if (d.handle) {
+    resize(o, oo, d.handle, dx, dy, e.shiftKey);
+  } else {
+    if (!e.free && d.objs.length) {
+      const box = unionBox(d.orig.filter((x) => d.objs.some((m) => m.id === x.id)).map(bbox));
+      const s = snapBox({ ...box, x: box.x + dx, y: box.y + dy }, targetsFor(d), 6 / state.zoom);
+      dx += s.dx; dy += s.dy;
+      setGuides(d.pageId, s);
+    } else setGuides(d.pageId, null);
+    d.objs.forEach((obj) => moveBy(obj, d.orig.find((x) => x.id === obj.id), dx, dy));
+  }
+  live([d.pageId]);
+}
+
+/** What a move can snap to: the page, the other visible edits, and the left edges of the PDF's lines. */
+function targetsFor(d) {
+  if (d.targets) return d.targets;
+  const page = pageById(d.pageId), moving = new Set(d.objs.map((o) => o.id));
+  if (!d.lineXs) { d.lineXs = []; pageLines(d.pageId).then((ls) => { d.lineXs = ls.map((l) => l.x); d.targets = null; }); }
+  return (d.targets = snapTargets(page, page.objects.filter((o) => !o.hidden && !moving.has(o.id)).map(bbox), d.lineXs));
+}
+
+/** Turn the pressed PDF line into an edited text box (via the Edit text tool) and carry on the drag with it. */
+async function lift(d) {
+  const page = pageById(d.pageId);
+  const before = new Set(page.objects.map((o) => o.id));
+  try { await toolList().find((t) => t.id === "edittext")?.tap({ pageId: d.pageId, pt: d.start }); } catch (err) { console.error("[select] lift", err); }
+  const o = page.objects.find((x) => !before.has(x.id));
+  if (!o) return; // no words there, or it reopened an edit that's already there
+  await closeTyping(o.id);
+  Object.assign(d, { lift: false, obj: o, objs: [o], orig: [JSON.parse(JSON.stringify(o))], handle: null });
+  select([o.id]);
+  begin();
+  applyMove(d, d.last);
+  if (d.up) finishDrag(d);
+}
+
+/** Edit text opens typing a frame or so after it adds the box; close it, we're moving not typing. */
+async function closeTyping(id) {
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => requestAnimationFrame(r));
+    const n = document.querySelector(`.layer-objects [data-id="${id}"] [contenteditable=true]`);
+    if (n) { n.blur(); return; }
+  }
+}
+
+let lastWord = { t: 0, x: 0, y: 0 };
 
 function onUp(e) {
   if (!drag || e.pointerId !== drag.id) return;
   const d = drag; drag = null;
+  if (d.lift) {
+    if (d.lifting) { d.up = true; return; } // finishes once the line is lifted
+    // a double-click on the PDF's words opens them for typing
+    if (Date.now() - lastWord.t < 450 && Math.hypot(d.sx - lastWord.x, d.sy - lastWord.y) < 8) toolList().find((t) => t.id === "edittext")?.tap({ pageId: d.pageId, pt: d.start });
+    lastWord = { t: Date.now(), x: d.sx, y: d.sy };
+    return;
+  }
+  finishDrag(d);
+}
+
+function finishDrag(d) {
+  setGuides(d.pageId, null);
+  live([d.pageId]);
   if (d.moved) end(d.handle ? "Resize" : "Move", { pages: [d.pageId] });
   else {
     end("Select");
@@ -112,8 +182,7 @@ export function moveBy(o, orig, dx, dy) {
   if ("x1" in o) { o.x1 = orig.x1 + dx; o.y1 = orig.y1 + dy; o.x2 = orig.x2 + dx; o.y2 = orig.y2 + dy; return; }
   if (o.strokes) { o.strokes = orig.strokes.map((s) => s.map(([x, y]) => [x + dx, y + dy])); return; }
   if (o.rects) { o.rects = orig.rects.map((r) => ({ ...r, x: r.x + dx, y: r.y + dy })); return; }
-  o.x = orig.x + dx; o.y = orig.y + dy;
-  if (o.cover && orig.cover) o.cover = { ...orig.cover, x: orig.cover.x + dx, y: orig.cover.y + dy };
+  o.x = orig.x + dx; o.y = orig.y + dy; // an edited line's cover stays over the old words
 }
 
 function resize(o, oo, handle, dx, dy, free) {
@@ -206,7 +275,7 @@ function onKey(e) {
   if (e.key === "Escape") { if (sel.length) select([]); return; }
   if (mod && e.key.toLowerCase() === "d" && sel.length) { e.preventDefault(); duplicate(sel); return; }
   if (mod && e.key.toLowerCase() === "c" && sel.length && !String(window.getSelection())) {
-    clip = sel.map((id) => JSON.parse(JSON.stringify(findObject(id).obj)));
+    clip = sel.map((id) => { const c = JSON.parse(JSON.stringify(findObject(id).obj)); delete c.cover; return c; });
     return;
   }
   if (mod && e.key.toLowerCase() === "v" && clip) {
@@ -223,12 +292,17 @@ function onKey(e) {
     select(ids);
     return;
   }
+  if (mod && (e.code === "BracketRight" || e.code === "BracketLeft") && sel.length) {
+    e.preventDefault();
+    arrange(e.code === "BracketRight" ? (e.shiftKey ? "front" : "forward") : (e.shiftKey ? "back" : "backward"));
+    return;
+  }
   if (e.key.startsWith("Arrow") && sel.length) {
     e.preventDefault();
     const step = e.shiftKey ? 10 : 1;
     const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
     const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-    change("Nudge", () => { for (const id of sel) { const o = findObject(id)?.obj; if (o) moveBy(o, JSON.parse(JSON.stringify(o)), dx, dy); } });
+    change("Nudge", () => { for (const id of sel) { const o = findObject(id)?.obj; if (o && !o.locked) moveBy(o, JSON.parse(JSON.stringify(o)), dx, dy); } });
     return;
   }
   if (e.key === "Enter" && sel.length === 1 && findObject(sel[0])?.obj.type === "text") { e.preventDefault(); startTyping(sel[0]); }
@@ -240,6 +314,7 @@ export function duplicate(ids) {
     for (const id of ids) {
       const f = findObject(id); if (!f) continue;
       const c = { ...JSON.parse(JSON.stringify(f.obj)), id: uid() };
+      delete c.cover; // the copy is new words, there's nothing under it to hide
       moveBy(c, f.obj, 14, 14);
       f.page.objects.push(c); out.push(c.id);
     }
@@ -247,15 +322,25 @@ export function duplicate(ids) {
   select(out);
 }
 
-/** Change the stacking order of the selection: "front" | "back". */
+const STACK_LABELS = { front: "Bring to front", forward: "Bring forward", backward: "Send backward", back: "Send to back" };
+/** Change the stacking order of the selection: "front" | "forward" | "backward" | "back". */
 export function arrange(where) {
-  change(where === "front" ? "Bring to front" : "Send to back", () => {
-    for (const id of state.selection) {
-      const f = findObject(id); if (!f) continue;
-      const arr = f.page.objects; arr.splice(arr.indexOf(f.obj), 1);
-      where === "front" ? arr.push(f.obj) : arr.unshift(f.obj);
-    }
-  });
+  change(STACK_LABELS[where], () => { for (const p of state.pages) p.objects = restack(p.objects, state.selection, where); });
+}
+
+const ALIGN_LABELS = { left: "Align left", center: "Align centre", right: "Align right", top: "Align top", middle: "Align middle", bottom: "Align bottom", x: "Spread out", y: "Spread out" };
+/**
+ * Line up the selection (on its page): left | center | right | top | middle | bottom, or spread
+ * it out with even gaps: "x" | "y". One edit lines up with the page; several with each other.
+ */
+export function alignSelection(how) {
+  const fs = state.selection.map(findObject).filter((f) => f && !f.obj.locked);
+  const page = fs[0]?.page;
+  if (!page) return;
+  const mine = fs.filter((f) => f.page === page);
+  const boxes = mine.map((f) => bbox(f.obj));
+  const ds = how === "x" || how === "y" ? distributeDeltas(boxes, how) : alignDeltas(boxes, how, mine.length === 1 ? { x: 0, y: 0, w: page.w, h: page.h } : undefined);
+  change(ALIGN_LABELS[how], () => mine.forEach((f, i) => moveBy(f.obj, JSON.parse(JSON.stringify(f.obj)), ds[i].dx, ds[i].dy)), { pages: [page.id] });
 }
 
 export function installSelect(column) {
@@ -263,5 +348,6 @@ export function installSelect(column) {
   column.addEventListener("pointermove", onMove);
   column.addEventListener("pointerup", onUp);
   column.addEventListener("pointercancel", onUp);
+  document.addEventListener("selectstart", (e) => { if (drag) e.preventDefault(); });
   document.addEventListener("keydown", onKey);
 }

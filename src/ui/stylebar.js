@@ -1,10 +1,10 @@
 // The style bar above the pages: the settings for what you've selected, or for the tool you're
 // holding (its next mark). Colours, size, font, weight, line width, and quick actions.
-import { el, icon, colorRow, modal } from "./kit.js";
+import { el, icon, colorRow, modal, popover, closePopover } from "./kit.js";
 import { state, on, findObject, updateObject, removeObjects, emit } from "../core/store.js";
 import { FAMILIES } from "../core/fonts.js";
 import { toolPrefs, setToolPrefs, toolById } from "../tools/registry.js";
-import { duplicate, arrange, startTyping } from "../tools/select.js";
+import { duplicate, arrange, alignSelection, startTyping } from "../tools/select.js";
 import { TEXT_DEFAULTS, DRAW_DEFAULTS, MARK_DEFAULTS, SHAPE_DEFAULTS } from "../tools/builtin.js";
 
 const extra = []; // features add controls: fn({ obj, tool }) -> node | null
@@ -29,8 +29,17 @@ function sizeStepper(value, set, { min = 4, max = 144, step = 1, unit = "" } = {
     el("button.sb-btn", { type: "button", title: "Bigger", on: { click: () => set(Math.min(max, Math.round((value + step) * 10) / 10)) } }, icon("Plus", 15)));
 }
 
+// The bar sits above the pages, so showing it would push the page down under your finger mid-drag:
+// scroll by the same amount to keep the page still.
 function render() {
   if (!bar) return;
+  const h0 = bar.offsetHeight;
+  paint();
+  const d = bar.offsetHeight - h0, vp = bar.parentElement?.querySelector(".viewport");
+  if (d && vp) vp.scrollTop += d;
+}
+
+function paint() {
   bar.replaceChildren();
   const sel = state.selection.map((id) => findObject(id)?.obj).filter(Boolean);
   const one = sel.length === 1 ? sel[0] : null;
@@ -103,10 +112,23 @@ function render() {
   if (sel.length) {
     bar.append(el("div.sb-row.sb-actions", {},
       el("button.sb-btn", { type: "button", title: "Duplicate (Ctrl+D)", on: { click: () => duplicate(state.selection) } }, icon("Copy", 16)),
-      el("button.sb-btn", { type: "button", title: "Bring to front", on: { click: () => arrange("front") } }, icon("BringToFront", 16)),
-      el("button.sb-btn", { type: "button", title: "Send to back", on: { click: () => arrange("back") } }, icon("SendToBack", 16)),
+      el("button.sb-btn", { type: "button", title: sel.length > 1 ? "Line up and spread out" : "Line up with the page", "aria-haspopup": "dialog", on: { click: (e) => alignMenu(e.currentTarget, sel.length) } }, icon("AlignStartVertical", 16)),
+      el("button.sb-btn", { type: "button", title: "Bring to front (Ctrl+Shift+])", on: { click: () => arrange("front") } }, icon("BringToFront", 16)),
+      el("button.sb-btn", { type: "button", title: "Bring forward (Ctrl+])", on: { click: () => arrange("forward") } }, icon("ChevronUp", 16)),
+      el("button.sb-btn", { type: "button", title: "Send backward (Ctrl+[)", on: { click: () => arrange("backward") } }, icon("ChevronDown", 16)),
+      el("button.sb-btn", { type: "button", title: "Send to back (Ctrl+Shift+[)", on: { click: () => arrange("back") } }, icon("SendToBack", 16)),
       el("button.sb-btn.danger", { type: "button", title: "Delete", on: { click: () => removeObjects(state.selection) } }, icon("Trash2", 16))));
   }
+}
+
+/** Align and spread-out buttons in a small pop-up. */
+function alignMenu(anchor, count) {
+  const b = (how, ic, t) => el("button.sb-btn", { type: "button", title: t, "aria-label": t, on: { click: () => { alignSelection(how); closePopover(); } } }, icon(ic, 17));
+  popover(anchor, el("div.sb-align", {},
+    el("div.sb-row", {}, b("left", "AlignStartVertical", "Left"), b("center", "AlignCenterVertical", "Centre"), b("right", "AlignEndVertical", "Right")),
+    el("div.sb-row", {}, b("top", "AlignStartHorizontal", "Top"), b("middle", "AlignCenterHorizontal", "Middle"), b("bottom", "AlignEndHorizontal", "Bottom")),
+    count >= 3 ? el("div.sb-row", {}, b("x", "AlignHorizontalDistributeCenter", "Even gaps across"), b("y", "AlignVerticalDistributeCenter", "Even gaps down")) : null,
+    el("small.sb-hint", {}, count > 1 ? "Lines them up with each other." : "Lines it up with the page.")));
 }
 
 function addExtra(ctx) {

@@ -193,7 +193,8 @@ body[data-tool="edittext"] .textLayer span { outline: 1px dashed color-mix(in sr
 .obj-svg.pop { animation: oc-fade-in .25s var(--ease); }
 .obj-text .txt { position: relative; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; min-height: 1em; }
 .obj-text .txt.placeholder::before { content: attr(data-ph); color: rgba(22,18,27,.35); position: absolute; pointer-events: none; }
-.obj-text .cover { position: absolute; }
+.layer-objects > .cover { position: absolute; }
+.snap-guide { position: absolute; z-index: 6; pointer-events: none; outline: 1px solid #ff2e7e; }
 .obj-text.typing { pointer-events: auto; cursor: text; outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .obj-text.typing .txt { user-select: text; -webkit-user-select: text; }
 .obj-image img { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
@@ -380,3 +381,6 @@ body.dragging::after { content: "Drop to open"; position: fixed; inset: 12px; z-
   .task-row { grid-template-columns: 1fr; }
   .task { flex-direction: row; align-items: center; }
 }
+.sb-align { display: grid; gap: 4px; }
+.sb-align .sb-row { display: flex; gap: 4px; }
+.sb-align .sb-hint { color: var(--muted); font-size: 12px; padding: 2px 4px; }

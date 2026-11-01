@@ -1,0 +1,17 @@
+/* Layers panel (CSS prefix .ly-) */
+.ly-help { margin: 0 0 10px; font-size: 13px; color: var(--muted, #6b6475); }
+.ly-empty { font-size: 14px; }
+.ly-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ly-row { display: flex; align-items: center; gap: 2px; padding: 2px 4px; border-radius: 10px; border: 2px solid transparent; background: var(--card); user-select: none; }
+.ly-row:hover { border-color: var(--line); }
+.ly-row.on { border-color: var(--accent); }
+.ly-row.off .ly-pick { opacity: .45; }
+.ly-row.dragging { opacity: .5; }
+.ly-grip { display: grid; place-items: center; width: 22px; height: 34px; cursor: grab; touch-action: none; color: var(--muted, #6b6475); }
+.ly-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px; border: 0; background: none; text-align: left; font: inherit; font-size: 14px; color: inherit; border-radius: 8px; }
+.ly-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ly-btn { display: grid; place-items: center; width: 34px; height: 34px; border: 0; background: none; border-radius: 8px; color: inherit; }
+.ly-btn:hover, .ly-pick:hover { background: var(--paper-hi, rgba(0,0,0,.05)); }
+.ly-btn[aria-pressed="true"] { color: var(--accent); }
+.ly-rename { flex: 1; min-width: 0; height: 30px; font: inherit; font-size: 14px; border: 2px solid var(--accent); border-radius: 8px; padding: 0 6px; }
+.ly-drop { height: 3px; border-radius: 2px; background: var(--accent); }

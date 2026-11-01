@@ -103,11 +103,6 @@ function paintHtml(n, o, z, editing) {
       s.textAlign = o.align || "left";
       s.background = o.bg || "transparent";
       s.height = "auto"; s.minHeight = px(o.h * z);
-      let cover = n.querySelector(":scope > .cover");
-      if (o.cover) {
-        if (!cover) { cover = document.createElement("div"); cover.className = "cover"; n.prepend(cover); }
-        Object.assign(cover.style, { left: px((o.cover.x - o.x) * z), top: px((o.cover.y - o.y) * z), width: px(o.cover.w * z), height: px(o.cover.h * z), background: o.cover.color || "#fff" });
-      } else cover?.remove();
       let t = n.querySelector(":scope > .txt");
       if (!t) { t = document.createElement("div"); t.className = "txt"; n.append(t); }
       if (!editing && t.textContent !== (o.text || "")) t.textContent = o.text || "";
@@ -135,11 +130,18 @@ export function drawObjects(v) {
   const p = v.page;
   const z = state.zoom;
   const layer = v.objects;
-  const seen = new Set();
+  const want = [];
   const editingId = layer.querySelector("[contenteditable=true]")?.closest(".obj")?.dataset.id;
-  let prev = null;
+  // an edited line's patch stays on the old spot, under every edit, so moved lines never hide each other
   for (const o of p.objects) {
-    seen.add(o.id);
+    if (o.hidden || o.type !== "text" || !o.cover) continue;
+    let c = layer.querySelector(`:scope > [data-cover="${o.id}"]`);
+    if (!c) { c = document.createElement("div"); c.className = "cover"; c.dataset.cover = o.id; }
+    Object.assign(c.style, { left: px(o.cover.x * z), top: px(o.cover.y * z), width: px(o.cover.w * z), height: px(o.cover.h * z), background: o.cover.color || "#fff" });
+    want.push(c);
+  }
+  for (const o of p.objects) {
+    if (o.hidden) continue;
     let n = layer.querySelector(`:scope > [data-id="${o.id}"]`);
     const isSvg = SVG_TYPES.has(o.type);
     if (n && n.dataset.type !== o.type) { n.remove(); n = null; }
@@ -151,12 +153,33 @@ export function drawObjects(v) {
     }
     if (isSvg) paintSvg(n, o); else paintHtml(n, o, z, editingId === o.id);
     n.classList.toggle("selected", state.selection.includes(o.id));
-    // keep z-order: each object right after the previous one
+    want.push(n);
+  }
+  // keep z-order: each node right after the previous one
+  let prev = null;
+  for (const n of want) {
     if (prev ? prev.nextSibling !== n : layer.firstChild !== n) prev ? prev.after(n) : layer.prepend(n);
     prev = n;
   }
-  for (const n of [...layer.children]) if (n.dataset.id && !seen.has(n.dataset.id)) n.remove();
+  const keep = new Set(want);
+  for (const n of [...layer.children]) if ((n.dataset.id || n.dataset.cover) && !keep.has(n)) n.remove();
   drawSelection(v);
+  drawGuides(v);
+}
+
+const guides = new Map(); // pageId -> { gx, gy } snap lines shown while dragging
+/** Show (or clear, with null) the snap guide lines on a page. */
+export function setGuides(pageId, g) { if (g && (g.gx != null || g.gy != null)) guides.set(pageId, g); else guides.delete(pageId); }
+
+function drawGuides(v) {
+  const g = guides.get(v.page.id), z = state.zoom;
+  for (const [k, on] of [["gx", g?.gx != null], ["gy", g?.gy != null]]) {
+    let n = v.objects.querySelector(`:scope > .snap-guide.${k}`);
+    if (!on) { n?.remove(); continue; }
+    if (!n) n = Object.assign(document.createElement("div"), { className: `snap-guide ${k}` });
+    v.objects.append(n);
+    Object.assign(n.style, k === "gx" ? { left: px(g.gx * z), top: "0", width: "0", height: "100%" } : { top: px(g.gy * z), left: "0", height: "0", width: "100%" });
+  }
 }
 
 /** The selection frame and handles (shown for one selected object on this page). */
