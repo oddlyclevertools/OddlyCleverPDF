@@ -163,7 +163,8 @@ export function startTyping(id, { selectAll = false, fresh = false } = {}) {
     f.obj.text = n.innerText.replace(/\n$/, "");
     n.classList.toggle("placeholder", !f.obj.text);
     const z = state.zoom;
-    f.obj.h = Math.max((f.obj.size || 14) * (f.obj.lineHeight || 1.25), wrap.offsetHeight / z);
+    // the text's own height, not the box's (the box has a min-height, so it could only grow)
+    f.obj.h = Math.max((f.obj.size || 14) * (f.obj.lineHeight || 1.25), n.offsetHeight / z);
     live([f.page.id]);
   };
   const finish = () => {
@@ -183,7 +184,11 @@ export function startTyping(id, { selectAll = false, fresh = false } = {}) {
     }
     end(fresh ? "Add text" : f.obj.cover ? "Edit text" : "Type", { pages: [f.page.id] });
   };
-  const keys = (e) => { if (e.key === "Escape") { e.preventDefault(); n.blur(); } e.stopPropagation(); };
+  const keys = (e) => {
+    // Esc finishes; so does Enter when changing the PDF's own words (Shift+Enter still adds a line)
+    if (e.key === "Escape" || (e.key === "Enter" && !e.shiftKey && f.obj.cover)) { e.preventDefault(); n.blur(); }
+    e.stopPropagation();
+  };
   n.addEventListener("input", onInput);
   n.addEventListener("blur", finish);
   n.addEventListener("keydown", keys);
