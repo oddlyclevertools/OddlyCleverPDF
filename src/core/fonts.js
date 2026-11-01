@@ -11,7 +11,7 @@ export const FAMILIES = {
 };
 
 // Fonts rebuilt from a PDF's own letters (see type3.js) use keys like "pdf3:<file>:<page>:<style>".
-const isPdfFont = (family) => String(family).startsWith("pdf3:");
+export const isPdfFont = (family) => String(family).startsWith("pdf3:");
 const pdfCss = (key) => `OC PDF ${key.replace(/[^\w-]/g, "_")}`;
 const faces = new Set();
 

@@ -7,15 +7,22 @@ import { state, findObject, begin, end, live, select, removeObjects, change, uid
 import { toPage, viewOf, currentIndex } from "../viewer/viewer.js";
 import { bbox, resizable, setGuides } from "../viewer/objects.js";
 import { pageLines } from "../core/text.js";
-import { registerTool, toolList } from "./registry.js";
+import { registerTool, toolById } from "./registry.js";
 import { unionBox, snapTargets, snapBox, alignDeltas, distributeDeltas, restack } from "../features/layers/logic.js";
 
 registerTool({ id: "select", label: "Select", icon: "MousePointer2", mode: "none", order: 0, key: "v", hint: "Drag anything to move it, even the PDF's own words. Hold Alt to select words instead." });
 
 const HANDLE = 14; // px
 
-/** The topmost object at a page point, and which handle (if any). */
-function hit(pageId, pt, coarse) {
+/** An object's box, with a text box as tall as its words show on screen. */
+function shownBox(pageId, o) {
+  const b = bbox(o);
+  const n = o.type === "text" && viewOf(pageId)?.objects.querySelector(`[data-id="${o.id}"]`);
+  return n ? { ...b, h: Math.max(b.h, n.offsetHeight / state.zoom) } : b;
+}
+
+/** The topmost object at a page point, and which handle (if any). The Move tool asks it too. */
+export function hit(pageId, pt, coarse) {
   const page = pageById(pageId);
   if (!page) return null;
   const z = state.zoom, tol = (coarse ? HANDLE : HANDLE * 0.6) / z; // a mouse is precise: keep handles off short text
@@ -28,10 +35,8 @@ function hit(pageId, pt, coarse) {
         if (Math.hypot(pt.x - o.x1, pt.y - o.y1) < tol) return { obj: o, handle: "p1" };
         if (Math.hypot(pt.x - o.x2, pt.y - o.y2) < tol) return { obj: o, handle: "p2" };
       } else if (resizable(o)) {
-        const b = bbox(o);
-        const n = viewOf(pageId)?.objects.querySelector(`[data-id="${o.id}"]`);
-        const h = o.type === "text" && n ? Math.max(b.h, n.offsetHeight / z) : b.h;
-        for (const [name, hx, hy] of [["nw", b.x, b.y], ["ne", b.x + b.w, b.y], ["sw", b.x, b.y + h], ["se", b.x + b.w, b.y + h]]) {
+        const b = shownBox(pageId, o);
+        for (const [name, hx, hy] of [["nw", b.x, b.y], ["ne", b.x + b.w, b.y], ["sw", b.x, b.y + b.h], ["se", b.x + b.w, b.y + b.h]]) {
           if (Math.abs(pt.x - hx) < tol && Math.abs(pt.y - hy) < tol) return { obj: o, handle: name };
         }
       }
@@ -40,8 +45,7 @@ function hit(pageId, pt, coarse) {
   for (let i = page.objects.length - 1; i >= 0; i--) {
     const o = page.objects[i];
     if (o.hidden || o.locked) continue;
-    let b = bbox(o);
-    if (o.type === "text") { const n = viewOf(pageId)?.objects.querySelector(`[data-id="${o.id}"]`); if (n) b = { ...b, h: Math.max(b.h, n.offsetHeight / z) }; }
+    const b = shownBox(pageId, o);
     const pad = (o.type === "line" || o.type === "arrow" || o.type === "ink") ? 6 / z : 0;
     if (pt.x >= b.x - pad && pt.x <= b.x + b.w + pad && pt.y >= b.y - pad && pt.y <= b.y + b.h + pad) {
       if (o.type === "line" || o.type === "arrow") {
@@ -77,16 +81,15 @@ function onDown(e) {
   if (!h) {
     if (state.selection.length) select([]);
     if (e.altKey) return; // Alt keeps native text selection
-    if (e.target.closest?.(".textLayer span")) {
-      // the PDF's own words: a drag lifts the line and moves it
+    // the PDF's own words: a drag lifts the line and moves it; else a drag picks up a picture or
+    // shape of the PDF's own (no preventDefault: over nothing, it still selects text)
+    const words = !!e.target.closest?.(".textLayer span");
+    if (words) {
       e.preventDefault();
       window.getSelection()?.removeAllRanges();
-      drag = { pageId, start: pt, lift: "words", id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY };
       pageEl.setPointerCapture?.(e.pointerId);
-    } else {
-      // a picture or shape of the PDF's own: a drag picks it up (no preventDefault: over nothing, it still selects text)
-      drag = { pageId, start: pt, lift: "item", id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY };
     }
+    drag = { pageId, start: pt, lift: words ? "words" : "item", id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY };
     return;
   }
   e.preventDefault();
@@ -148,7 +151,7 @@ async function lift(d) {
   if (d.lift === "words") {
     const page = pageById(d.pageId);
     const before = new Set(page.objects.map((x) => x.id));
-    try { await toolList().find((t) => t.id === "edittext")?.tap({ pageId: d.pageId, pt: d.start }); } catch (err) { console.error("[select] lift", err); }
+    try { await toolById("edittext")?.tap({ pageId: d.pageId, pt: d.start }); } catch (err) { console.error("[select] lift", err); }
     o = page.objects.find((x) => !before.has(x.id));
     if (!o) return; // no words there, or it reopened an edit that's already there
     await closeTyping(o.id);
@@ -184,7 +187,7 @@ function onUp(e) {
     if (d.lifting) { d.up = true; return; } // finishes once the line or picture is lifted
     if (d.lift !== "words") return;
     // a double-click on the PDF's words opens them for typing
-    if (Date.now() - lastWord.t < 450 && Math.hypot(d.sx - lastWord.x, d.sy - lastWord.y) < 8) toolList().find((t) => t.id === "edittext")?.tap({ pageId: d.pageId, pt: d.start });
+    if (Date.now() - lastWord.t < 450 && Math.hypot(d.sx - lastWord.x, d.sy - lastWord.y) < 8) toolById("edittext")?.tap({ pageId: d.pageId, pt: d.start });
     lastWord = { t: Date.now(), x: d.sx, y: d.sy };
     return;
   }

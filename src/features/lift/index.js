@@ -5,7 +5,7 @@ import "./lift.css";
 import { PDFDocument, degrees } from "@cantoo/pdf-lib";
 import { findItems, cutItem, only, setContent } from "../../core/lift.js";
 import { el, toast } from "../../ui/kit.js";
-import { bbox } from "../../viewer/objects.js";
+import { hit as editAt } from "../../tools/select.js";
 
 export function install(app) {
   const { state, store } = app;
@@ -129,12 +129,12 @@ export function install(app) {
   }
 
   /** For other tools: pick up whatever is at a point (page space). Resolves the new edit or null. */
-  app.liftAt = async (pageId, pt, move = { x: 0, y: 0 }) => {
+  app.liftAt = async (pageId, pt) => {
     const page = store.pageById(pageId);
     if (!page) return null;
     await itemsOf(page);
     const it = hit(page, pt);
-    return it ? liftItem(pageId, it, move.x, move.y) : null;
+    return it ? liftItem(pageId, it) : null;
   };
 
   // ---- the tool ----------------------------------------------------------------------------------
@@ -144,12 +144,7 @@ export function install(app) {
    * switch to it and replay the press for it, and the same drag carries on there.
    */
   function handToSelect(page, pt, e) {
-    const pad = 4 / state.zoom;
-    const onEdit = page.objects.some((o) => {
-      if (o.hidden || o.locked) return false;
-      const b = bbox(o);
-      return pt.x >= b.x - pad && pt.x <= b.x + b.w + pad && pt.y >= b.y - pad && pt.y <= b.y + b.h + pad;
-    });
+    const onEdit = !!editAt(page.id, pt, e.pointerType !== "mouse"); // the same test Select makes
     const word = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.matches?.(".textLayer span"));
     if (!onEdit && !word) return false;
     e.stopImmediatePropagation(); // Select would see this press on the tool layer and miss the words

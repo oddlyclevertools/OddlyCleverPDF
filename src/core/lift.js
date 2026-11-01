@@ -2,22 +2,17 @@
 // picture and drawn shape on a page with its box (the parts of one icon count as one item);
 // without() writes the page's drawing instructions with items cut out, only() with nothing else.
 // Boxes are [x0, y0, x1, y1] in PDF user space. Item `units` are [from, to] operator indices.
-import { PDFArray, PDFDict, PDFName, PDFRawStream, PDFRef, decodePDFRawStream } from "@cantoo/pdf-lib";
-import { contentOps, readPage } from "./type3.js";
+import { PDFArray, PDFDict, PDFName, PDFRef } from "@cantoo/pdf-lib";
+import { contentOps, readPage, pageSource, streamText, mul, apply, boxOf } from "./type3.js";
 
 // contentOps doesn't say where an operator ends, but it slices the operator's own token last
 // before yielding it, so this string remembers where the last slice ended.
 // shortcut: relies on contentOps's slicing; upgrade when contentOps yields positions itself.
 class Tracked extends String { slice(a, b) { this.end = b; return super.slice(a, b); } }
 
-const latin1 = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192)); return s; };
-const streamText = (s) => latin1(s instanceof PDFRawStream ? decodePDFRawStream(s).decode() : s.getContents());
-
 /** The page's content (all parts joined) and its operators with their [start, end) in it. */
 export function pageOps(doc, index) {
-  const c = doc.getPage(index).node.Contents();
-  const parts = c instanceof PDFArray ? c.asArray().map((r) => doc.context.lookup(r)) : [c];
-  const src = parts.filter(Boolean).map(streamText).join("\n");
+  const src = pageSource(doc, index);
   const t = new Tracked(src), ops = [];
   let prev = 0;
   for (const { op, args } of contentOps(t)) {
@@ -30,16 +25,7 @@ export function pageOps(doc, index) {
   return { src, ops };
 }
 
-const mul = (a, b) => [
-  a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3],
-  a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3],
-  a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5],
-];
-const boxOf = (pts) => {
-  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
-};
-const corners = (m, x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+const corners = (m, x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => apply(m, x, y));
 const union = (a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
 const gap = (a, b) => Math.max(a[0] - b[2], b[0] - a[2], a[1] - b[3], b[1] - a[3], 0);
 
@@ -59,7 +45,7 @@ function readUnits(doc, index, ops) {
   const units = [];
   let ctm = [1, 0, 0, 1, 0, 0], lw = 1, from = -1, subs = [], sub = null, clip = false, textFrom = -1, cur = [0, 0];
   const stack = [];
-  const pt = (x, y) => [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]];
+  const pt = (x, y) => apply(ctm, x, y);
   ops.forEach(({ op, args: a }, i) => {
     if (BUILD.has(op) && from < 0) from = i;
     switch (op) {

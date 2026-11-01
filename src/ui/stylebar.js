@@ -2,7 +2,7 @@
 // holding (its next mark). Colours, size, font, weight, line width, and quick actions.
 import { el, icon, colorRow, modal, popover, closePopover } from "./kit.js";
 import { state, on, findObject, updateObject, removeObjects, emit } from "../core/store.js";
-import { FAMILIES } from "../core/fonts.js";
+import { FAMILIES, isPdfFont } from "../core/fonts.js";
 import { toolPrefs, setToolPrefs, toolById } from "../tools/registry.js";
 import { duplicate, arrange, alignSelection, startTyping } from "../tools/select.js";
 import { TEXT_DEFAULTS, DRAW_DEFAULTS, MARK_DEFAULTS, SHAPE_DEFAULTS } from "../tools/builtin.js";
@@ -67,7 +67,7 @@ function paint() {
     row.append(
       el("select.sb-sel", { "aria-label": "Font", on: { change: (e) => set({ font: e.target.value }, "Font") } },
         Object.entries(FAMILIES).map(([k, f]) => el("option", { value: k, selected: (val.font || "sans") === k }, f.label)),
-        String(val.font).startsWith("pdf3:") ? el("option", { value: val.font, selected: true }, "This PDF's own font") : null),
+        isPdfFont(val.font) ? el("option", { value: val.font, selected: true }, "This PDF's own font") : null),
       sizeStepper(val.size || 14, (v) => set({ size: v }, "Text size"), { unit: "pt" }),
       iconToggle("Bold", "Bold", val.bold, () => set({ bold: !val.bold }, "Bold")),
       iconToggle("Italic", "Italic", val.italic, () => set({ italic: !val.italic }, "Italic")),

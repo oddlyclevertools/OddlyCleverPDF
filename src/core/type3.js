@@ -77,15 +77,27 @@ export function* contentOps(src) {
   }
 }
 
-const mul = (a, b) => [
+export const mul = (a, b) => [
   a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3],
   a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3],
   a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5],
 ];
-const apply = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+export const apply = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+/** The [x0, y0, x1, y1] box around [x, y] points. */
+export const boxOf = (pts) => {
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+};
 
 const latin1 = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192)); return s; };
-const streamText = (s) => latin1(s instanceof PDFRawStream ? decodePDFRawStream(s).decode() : s.getContents());
+export const streamText = (s) => latin1(s instanceof PDFRawStream ? decodePDFRawStream(s).decode() : s.getContents());
+
+/** A page's drawing instructions (all its content streams joined) as a latin1 string. */
+export function pageSource(doc, index) {
+  const c = doc.getPage(index).node.Contents();
+  const parts = c instanceof PDFArray ? c.asArray().map((r) => doc.context.lookup(r)) : [c];
+  return parts.filter(Boolean).map(streamText).join("\n");
+}
 
 /** code -> unicode from a ToUnicode CMap (bfchar and bfrange). */
 export function parseToUnicode(text) {
@@ -138,9 +150,7 @@ export function readPage(doc, index) {
   const fonts = type3Fonts(doc, node);
   const styles = new Map(), shows = [];
   if (!fonts.size) return { styles, shows };
-  const contents = node.Contents();
-  const parts = contents instanceof PDFArray ? contents.asArray().map((r) => doc.context.lookup(r)) : [contents];
-  const src = parts.filter(Boolean).map(streamText).join("\n");
+  const src = pageSource(doc, index);
 
   let ctm = [1, 0, 0, 1, 0, 0], tm = ctm, tlm = ctm, font = null, fs = 1, tc = 0, tw = 0, th = 1, tl = 0, rise = 0;
   const gstack = [], contours = [], glyphs = [];
@@ -210,9 +220,7 @@ export function readPage(doc, index) {
   // each shape goes to the letter whose box holds its middle (underlines and backgrounds are too big)
   const all = glyphs.flat();
   for (const s of contours) {
-    const pts = s.flatMap((c) => c.slice(1));
-    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const [x0, y0, x1, y1] = boxOf(s.flatMap((c) => c.slice(1)));
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     const g = all.find((g) => cx >= g.x && cx <= g.x + g.adv && cy >= g.base - g.size * 0.35 && cy <= g.base + g.size * 1.05 &&
       x1 - x0 <= Math.max(g.adv * 1.5, g.size * 0.7) && y1 - y0 <= g.size * 1.4);
