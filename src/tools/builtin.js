@@ -62,10 +62,31 @@ function sampleColors(v, box) {
 
 let type3Noted = false;
 
+/** The edited text under a tap (on its words or its cover), topmost first, so a tap reopens it. */
+function textObjectAt(page, pt) {
+  for (const o of [...page.objects].reverse()) {
+    if (o.type !== "text") continue;
+    const c = o.cover, pad = Math.max(2, (o.size || 14) * 0.25);
+    if (c && pt.x >= c.x - pad && pt.x <= c.x + c.w + pad && pt.y >= c.y - pad && pt.y <= c.y + c.h + pad) return o;
+    const t = document.querySelector(`.layer-objects [data-id="${o.id}"] > .txt`);
+    if (!t) continue;
+    const box = t.parentElement.getBoundingClientRect(), z = box.width / o.w;
+    const range = document.createRange();
+    range.selectNodeContents(t);
+    for (const r of range.getClientRects()) {
+      const x = o.x + (r.left - box.left) / z, y = o.y + (r.top - box.top) / z;
+      if (pt.x >= x - pad && pt.x <= x + r.width / z + pad && pt.y >= y - pad && pt.y <= y + r.height / z + pad) return o;
+    }
+  }
+  return null;
+}
+
 registerTool({
   id: "edittext", label: "Edit text", icon: "TextCursorInput", mode: "tap", order: 5, key: "e", group: "edit",
   hint: "Tap any words in the PDF to change them.",
   tap: async ({ pageId, pt }) => {
+    const mine = textObjectAt(pageById(pageId), pt);
+    if (mine) { select([mine.id]); startTyping(mine.id); return; }
     const lines = await pageLines(pageId);
     const v = viewOf(pageId);
     let pick = null;
@@ -85,8 +106,6 @@ registerTool({
     const own = b.runs[0].type3 ? await type3FontFor(pageId, b, pt).catch((e) => { console.warn("[type3]", e); return null; }) : null;
     if (own) b = spanOf(own.runs);
     const page = pageById(pageId);
-    const already = page.objects.find((o) => o.type === "text" && o.cover && Math.abs(o.cover.x - b.x) < 1 && Math.abs(o.cover.y - (b.y - 1)) < 1.5);
-    if (already) { select([already.id]); startTyping(already.id); return; }
     const first = b.runs[0];
     const { bg, ink, stem = 0 } = v ? sampleColors(v, b) : { bg: "#ffffff", ink: "#111111" };
     const size = Math.round(first.size * 10) / 10;
@@ -94,7 +113,7 @@ registerTool({
     const bold = own ? false : first.type3 ? stem / first.size > 0.13 : first.bold;
     if (first.type3 && !own && !type3Noted) { type3Noted = true; toast("This PDF's font can't be reused, so we matched it as closely as we could.", { ms: 5000 }); }
     const o = {
-      id: uid(), type: "text", x: b.x, y: b.y - size * 0.12, w: b.w * 1.3 + size * 2, h: b.h + size * 0.2, text: b.text,
+      id: uid(), type: "text", x: b.x, y: b.y - size * 0.12, w: b.w * 1.3 + size * 2, h: b.h + size * 0.2, text: b.text.replace(/[\r\n\t]+/g, " ").trim(), // Figma ends each line with \r
       font: own?.key || first.family, bold, italic: first.italic, size, color: ink, align: "left", lineHeight: 1.2,
       cover: { x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2, color: bg }, edited: true,
     };

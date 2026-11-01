@@ -200,10 +200,15 @@ export function colorRow(value, onPick, { colors = PALETTE, label = "Colour" } =
 export function toast(message, { error = false, ms = 3200 } = {}) {
   let host = document.getElementById("toasts");
   if (!host) document.body.append(host = el("div.toasts", { id: "toasts" }));
-  const t = el("div.toast", { class: error ? "error" : null, role: "status" }, message);
-  host.append(t);
-  requestAnimationFrame(() => t.classList.add("show"));
-  setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 300); }, ms);
+  // the same message again (say, several missed taps) keeps the one already showing
+  let t = [...host.children].find((x) => x.textContent === String(message) && x.classList.contains("show"));
+  if (!t) {
+    t = el("div.toast", { class: error ? "error" : null, role: "status" }, message);
+    host.append(t);
+    requestAnimationFrame(() => t.classList.add("show"));
+  }
+  clearTimeout(t.hideTimer);
+  t.hideTimer = setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 300); }, ms);
   return t; // callers may remove a long "working…" toast early
 }
 
