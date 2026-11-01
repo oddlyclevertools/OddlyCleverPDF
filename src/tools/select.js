@@ -8,7 +8,7 @@ import { toPage, viewOf, currentIndex } from "../viewer/viewer.js";
 import { bbox, resizable, setGuides } from "../viewer/objects.js";
 import { pageLines } from "../core/text.js";
 import { registerTool, toolById } from "./registry.js";
-import { unionBox, snapTargets, snapBox, alignDeltas, distributeDeltas, restack } from "../features/layers/logic.js";
+import { unionBox, snapTargets, snapBox, alignDeltas, distributeDeltas, restack, coveringEdit } from "../features/layers/logic.js";
 
 registerTool({ id: "select", label: "Select", icon: "MousePointer2", mode: "none", order: 0, key: "v", hint: "Drag anything to move it, even the PDF's own words. Hold Alt to select words instead." });
 
@@ -150,11 +150,15 @@ async function lift(d) {
   let o = null;
   if (d.lift === "words") {
     const page = pageById(d.pageId);
-    const before = new Set(page.objects.map((x) => x.id));
-    try { await toolById("edittext")?.tap({ pageId: d.pageId, pt: d.start }); } catch (err) { console.error("[select] lift", err); }
-    o = page.objects.find((x) => !before.has(x.id));
-    if (!o) return; // no words there, or it reopened an edit that's already there
-    await closeTyping(o.id);
+    // words you already edited: move that edit (asking Edit text would reopen it for typing)
+    o = coveringEdit(page.objects, d.start);
+    if (!o) {
+      const before = new Set(page.objects.map((x) => x.id));
+      try { await toolById("edittext")?.tap({ pageId: d.pageId, pt: d.start }); } catch (err) { console.error("[select] lift", err); }
+      o = page.objects.find((x) => !before.has(x.id));
+      if (!o) return; // no words there
+      await closeTyping(o.id);
+    }
   } else {
     // shortcut: reaches the lift feature through the app object; a registry hook would be cleaner if more features need this
     try { o = await window.ocpdf?.liftAt?.(d.pageId, d.start); } catch (err) { console.error("[select] pick up", err); }

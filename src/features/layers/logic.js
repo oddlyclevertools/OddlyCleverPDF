@@ -92,6 +92,12 @@ const TYPE_NAMES = {
   redact: "Black out", note: "Note",
 };
 
+/** The topmost edit whose white cover hides the PDF's words at a point (edited words, wherever the edit now sits). */
+export function coveringEdit(objects, pt) {
+  return [...objects].reverse().find((o) => o.type === "text" && o.cover && !o.hidden && !o.locked
+    && pt.x >= o.cover.x && pt.x <= o.cover.x + o.cover.w && pt.y >= o.cover.y && pt.y <= o.cover.y + o.cover.h) || null;
+}
+
 /** A short, plain name for a layer. */
 export function layerName(o) {
   if (o.name) return o.name;

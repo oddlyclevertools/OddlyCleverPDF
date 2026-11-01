@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { unionBox, snapTargets, snapBox, alignDeltas, distributeDeltas, restack, moveItem, layerName } from "../../src/features/layers/logic.js";
+import { unionBox, snapTargets, snapBox, alignDeltas, distributeDeltas, restack, moveItem, layerName, coveringEdit } from "../../src/features/layers/logic.js";
 
 const B = (x, y, w, h) => ({ x, y, w, h });
 
@@ -76,5 +76,22 @@ describe("layer names", () => {
     expect(layerName({ type: "highlight", style: "strike" })).toBe("Strikethrough");
     expect(layerName({ type: "vector" })).toBe("Vector");
     expect(layerName({ type: "rect", name: "Header bar" })).toBe("Header bar");
+  });
+});
+
+describe("coveringEdit", () => {
+  const cover = { x: 50, y: 100, w: 80, h: 14 };
+  const edit = { id: "e1", type: "text", x: 300, y: 400, w: 90, h: 16, cover }; // moved away from its words
+  it("finds the edit whose cover hides the pressed words, wherever the edit now is", () => {
+    expect(coveringEdit([edit], { x: 60, y: 105 })?.id).toBe("e1");
+  });
+  it("ignores presses off the cover, and hidden, locked or cover-less edits", () => {
+    expect(coveringEdit([edit], { x: 200, y: 105 })).toBe(null);
+    expect(coveringEdit([{ ...edit, hidden: true }], { x: 60, y: 105 })).toBe(null);
+    expect(coveringEdit([{ ...edit, locked: true }], { x: 60, y: 105 })).toBe(null);
+    expect(coveringEdit([{ ...edit, cover: undefined }], { x: 60, y: 105 })).toBe(null);
+  });
+  it("picks the topmost when covers overlap", () => {
+    expect(coveringEdit([edit, { ...edit, id: "e2" }], { x: 60, y: 105 })?.id).toBe("e2");
   });
 });
