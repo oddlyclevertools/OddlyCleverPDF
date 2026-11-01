@@ -62,7 +62,7 @@ function onDown(e) {
   if (e.button > 0) return;
   // other tools: only the selection's frame and handles move or resize it (presses elsewhere are the tool's)
   const other = state.tool !== "select";
-  if (other && !e.target.closest?.(".sel-frame")) return;
+  if (other && (state.tool !== "lift" || !e.target.closest?.(".sel-frame"))) return; // editing never moves things
   const pageEl = e.target.closest?.(".page");
   if (!pageEl) return;
   if (e.target.closest?.("[contenteditable=true]")) return; // typing
