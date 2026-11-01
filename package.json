@@ -1,6 +1,6 @@
 {
   "name": "oddlyclever-pdf",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Free, private PDF editor that runs in your browser: edit, sign, organise, convert, and bring your own AI.",
   "scripts": {
     "dev": "vite",
