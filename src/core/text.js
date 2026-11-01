@@ -97,6 +97,92 @@ export function spanOf(runs) {
 
 export function clearTextCache() { cache.clear(); }
 
+// ---- finding text near a tap (Edit text) --------------------------------------------------------
+
+/**
+ * The phrase under a tap, or else the nearest one on the same row when the tap is close: a gap
+ * between words or columns, a little past a line's end, just above or below a line. `hit` says
+ * the tap was on the words themselves. Null when nothing is near.
+ */
+export function blockNear(lines, pt) {
+  let best = null, bd = Infinity;
+  for (const line of lines) for (const block of blocksOf(line)) {
+    const s = block.size;
+    const dx = Math.max(0, block.x - pt.x, pt.x - block.x - block.w) / s;
+    const dy = Math.max(0, block.y - pt.y, pt.y - block.y - block.h) / s;
+    if (dx > 4 || dy > 0.5) continue;
+    const d = dx + dy * 4; // another row is much further away than the same row
+    if (d < bd) { bd = d; best = { line, block, hit: dx <= 0.25 && dy <= 0.25 }; }
+  }
+  return best;
+}
+
+const styleOf = (b) => { const r = b.runs[0]; return `${r.family}|${r.bold}|${r.italic}|${r.type3}`; };
+
+/** Width of a block's first word. */
+function firstWordW(b) {
+  const r = b.runs.find((r) => r.str.trim());
+  const m = /^\s*\S+/.exec(r.str);
+  return charX(r, m[0].length) - charX(r, 0);
+}
+
+/**
+ * The lines of the paragraph a block sits in, top to bottom (just [block] when it's alone).
+ * A line joins when it has the same style, size and left edge, even spacing, and the line above
+ * really wrapped (the next first word would not have fit). Table cells and short rows stay apart.
+ */
+export function paragraphOf(lines, block) {
+  const s = block.size, key = styleOf(block), para = [block];
+  const right = (bs) => Math.max(...bs.map((b) => b.x + b.w));
+  // the phrase in this column on the next line up (dir -1) or down (+1), if it is one of ours
+  const next = (from, dir) => {
+    const x1 = right(para);
+    const below = lines.filter((l) => dir * (l.y - from.y) > s * 0.5).sort((a, b) => dir * (a.y - b.y));
+    for (const l of below) {
+      const c = blocksOf(l).find((c) => c.x < x1 && c.x + c.w > block.x);
+      if (!c) continue;
+      const same = styleOf(c) === key && Math.abs(c.size - s) < s * 0.05 && Math.abs(c.x - block.x) < s * 0.5;
+      return same && Math.abs(c.y - from.y) < s * 2.2 ? c : null;
+    }
+    return null;
+  };
+  let lead = 0;
+  for (const dir of [1, -1]) {
+    for (;;) {
+      const edge = dir > 0 ? para.at(-1) : para[0];
+      const c = next(edge, dir);
+      if (!c) break;
+      const gap = Math.abs(c.y - edge.y);
+      if (lead && Math.abs(gap - lead) > lead * 0.15) break;
+      const r = right([...para, c]);
+      if (r - block.x < s * 20) break; // too narrow to be wrapping prose (a table column)
+      const [a, b] = dir > 0 ? [edge, c] : [c, edge];
+      // the line above ended early, or with a real line break (Figma keeps the "\n"): a new paragraph
+      if (/\n\s*$/.test(a.text) || a.x + a.w + s * 0.3 + firstWordW(b) < r - s * 0.1) break;
+      lead ||= gap;
+      if (dir > 0) para.push(c); else para.unshift(c);
+    }
+  }
+  return para;
+}
+
+/**
+ * Where the caret goes for a tap at (x, y): `rects` are the screen boxes of each letter in order.
+ * It picks the nearest row, then the nearest letter edge on it (past a line's end = end of line).
+ */
+export function caretIndexAt(rects, x, y) {
+  if (!rects.length) return 0;
+  const dy = (r) => Math.max(0, r.top - y, y - r.bottom);
+  const row = Math.min(...rects.map(dy));
+  let k = 0, bd = Infinity;
+  rects.forEach((r, i) => {
+    if (dy(r) > row + 0.5) return;
+    const before = x < (r.left + r.right) / 2, d = Math.abs(x - (before ? r.left : r.right));
+    if (d < bd) { bd = d; k = before ? i : i + 1; }
+  });
+  return k;
+}
+
 /**
  * Typical stroke thickness (pixels) of the ink in an RGBA strip: the median width of the dark runs
  * across each row, counting faint edge pixels in part. Edit text uses it to guess bold when the

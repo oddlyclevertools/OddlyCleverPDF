@@ -1,7 +1,7 @@
 // The everyday tools: add text, edit the PDF's own text, draw, highlight, shapes, whiteout,
 // redact, sticky notes and pictures.
 import { state, pageById, begin, end, live, select, addObject, uid, putImage, emit, change } from "../core/store.js";
-import { pageLines, blocksOf, spanOf, charX, charAt, stemWidth } from "../core/text.js";
+import { pageLines, spanOf, charX, charAt, stemWidth, blockNear, paragraphOf, caretIndexAt } from "../core/text.js";
 import { viewOf } from "../viewer/viewer.js";
 import { registerTool, toolPrefs, useTool } from "./registry.js";
 import { startTyping } from "./select.js";
@@ -62,65 +62,123 @@ function sampleColors(v, box) {
 
 let type3Noted = false;
 
-/** The edited text under a tap (on its words or its cover), topmost first, so a tap reopens it. */
-function textObjectAt(page, pt) {
+/**
+ * The text box under a tap, topmost first, so a tap reopens it: on its words or its cover, or
+ * with `frame`, anywhere inside its box.
+ */
+function textObjectAt(page, pt, { frame = false } = {}) {
   for (const o of [...page.objects].reverse()) {
     if (o.type !== "text") continue;
-    const c = o.cover, pad = Math.max(2, (o.size || 14) * 0.25);
-    if (c && pt.x >= c.x - pad && pt.x <= c.x + c.w + pad && pt.y >= c.y - pad && pt.y <= c.y + c.h + pad) return o;
+    const pad = Math.max(2, (o.size || 14) * 0.25);
+    const inside = (b) => pt.x >= b.x - pad && pt.x <= b.x + b.w + pad && pt.y >= b.y - pad && pt.y <= b.y + b.h + pad;
+    if (frame ? inside(o) : o.cover && inside(o.cover)) return o;
+    if (frame) continue;
     const t = document.querySelector(`.layer-objects [data-id="${o.id}"] > .txt`);
     if (!t) continue;
     const box = t.parentElement.getBoundingClientRect(), z = box.width / o.w;
     const range = document.createRange();
     range.selectNodeContents(t);
     for (const r of range.getClientRects()) {
-      const x = o.x + (r.left - box.left) / z, y = o.y + (r.top - box.top) / z;
-      if (pt.x >= x - pad && pt.x <= x + r.width / z + pad && pt.y >= y - pad && pt.y <= y + r.height / z + pad) return o;
+      if (inside({ x: o.x + (r.left - box.left) / z, y: o.y + (r.top - box.top) / z, w: r.width / z, h: r.height / z })) return o;
     }
   }
   return null;
 }
 
+/** Put the typing caret at the letter nearest a screen point (not always at the end). */
+function caretToPoint(id, e) {
+  const n = document.querySelector(`.layer-objects [data-id="${id}"] > .txt`);
+  if (!n || !e || document.activeElement !== n) return;
+  const spots = [], rects = [];
+  const walk = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+  const r = document.createRange();
+  for (let t; (t = walk.nextNode());) {
+    for (let i = 0; i < t.length; i++) { r.setStart(t, i); r.setEnd(t, i + 1); spots.push([t, i]); rects.push(r.getBoundingClientRect()); }
+  }
+  if (!spots.length) return;
+  const k = caretIndexAt(rects, e.clientX, e.clientY);
+  const [t, i] = k < spots.length ? spots[k] : [spots.at(-1)[0], spots.at(-1)[1] + 1];
+  window.getSelection().collapse(t, i);
+}
+
+/** Type3 (Figma) lines in the same rebuilt font as the tapped one, cut to that font; null if not whole. */
+async function type3Para(pageId, para, at, own) {
+  const out = [];
+  for (const c of para) {
+    if (c === at) { out.push(spanOf(own.runs)); continue; }
+    const o = await type3FontFor(pageId, c, { x: c.x + c.w / 2, y: c.y + c.h / 2 }).catch(() => null);
+    const sp = o && spanOf(o.runs);
+    out.push(o?.key === own.key && sp.w > c.w - c.size * 0.5 ? sp : null);
+  }
+  // keep the unbroken run of good lines around the tapped one
+  let a = para.indexOf(at), z = a;
+  while (a > 0 && out[a - 1]) a--;
+  while (z < out.length - 1 && out[z + 1]) z++;
+  return out.slice(a, z + 1);
+}
+
 registerTool({
   id: "edittext", label: "Edit text", icon: "TextCursorInput", mode: "tap", order: 5, key: "e", group: "edit",
   hint: "Tap any words in the PDF to change them.",
-  tap: async ({ pageId, pt }) => {
-    const mine = textObjectAt(pageById(pageId), pt);
-    if (mine) { select([mine.id]); startTyping(mine.id); return; }
+  tap: async ({ pageId, pt, e }) => {
+    const page = pageById(pageId);
+    const open = (o) => { select([o.id]); startTyping(o.id); caretToPoint(o.id, e); };
+    const mine = textObjectAt(page, pt);
+    if (mine) return open(mine);
     const lines = await pageLines(pageId);
     const v = viewOf(pageId);
-    let pick = null;
-    for (const l of lines) {
-      for (const b of blocksOf(l)) {
-        const pad = Math.max(2, b.size * 0.25);
-        if (pt.x >= b.x - pad && pt.x <= b.x + b.w + pad && pt.y >= b.y - pad && pt.y <= b.y + b.h + pad) pick = { line: l, block: b };
-      }
+    // the words under the tap, else a box whose frame you tapped, else the nearest words
+    let pick = blockNear(lines, pt);
+    if (!pick?.hit) {
+      const framed = textObjectAt(page, pt, { frame: true });
+      if (framed) return open(framed);
     }
     if (!pick) {
       toast(lines.length ? "No text right there. Tap on the words you want to change." : "This page has no editable text (it may be a scan). Use Add text, or turn on text recognition (OCR).", { ms: 4200 });
       return;
     }
+    // these words are already being edited in a box: open that one, never a second copy
+    const cx = pick.block.x + pick.block.w / 2, cy = pick.block.y + pick.block.h / 2;
+    const done = [...page.objects].reverse().find((o) => o.type === "text" && o.cover && cx >= o.cover.x && cx <= o.cover.x + o.cover.w && cy >= o.cover.y && cy <= o.cover.y + o.cover.h);
+    if (done) return open(done);
     let b = pick.block;
+    let para = paragraphOf(lines, b);
     // Type3 text (Figma exports): rebuild the font from the PDF's own letters, and take only the
     // part of the line in the style you tapped
     const own = b.runs[0].type3 ? await type3FontFor(pageId, b, pt).catch((e) => { console.warn("[type3]", e); return null; }) : null;
-    if (own) b = spanOf(own.runs);
-    const page = pageById(pageId);
+    if (own) {
+      const sp = spanOf(own.runs);
+      para = sp.w > b.w - b.size * 0.5 && para.length > 1 ? await type3Para(pageId, para, b, own) : [sp];
+      b = para.find((p) => p.y === sp.y) || sp;
+    } else if (b.runs[0].type3) para = [b];
     const first = b.runs[0];
-    const { bg, ink, stem = 0 } = v ? sampleColors(v, b) : { bg: "#ffffff", ink: "#111111" };
+    const top = para[0], last = para.at(-1);
+    const x0 = Math.min(...para.map((p) => p.x)), right = Math.max(...para.map((p) => p.x + p.w));
+    const area = { x: x0, y: top.y, w: right - x0, h: last.y + last.h - top.y };
+    const { bg, ink, stem = 0 } = v ? sampleColors(v, area) : { bg: "#ffffff", ink: "#111111" };
     const size = Math.round(first.size * 10) / 10;
     // without a rebuilt font, a Type3 font has no name or weight to read, so judge bold by stroke thickness
     const bold = own ? false : first.type3 ? stem / first.size > 0.13 : first.bold;
     if (first.type3 && !own && !type3Noted) { type3Noted = true; toast("This PDF's font can't be reused, so we matched it as closely as we could.", { ms: 5000 }); }
+    // a paragraph keeps its own line spacing and width, so typing reflows like the original
+    const lh = para.length > 1 ? Math.round(((last.y - top.y) / (para.length - 1) / size) * 100) / 100 : 1.2;
     const o = {
-      id: uid(), type: "text", x: b.x, y: b.y - size * 0.12, w: b.w * 1.3 + size * 2, h: b.h + size * 0.2, text: b.text.replace(/[\r\n\t]+/g, " ").trim(), // Figma ends each line with \r
-      font: own?.key || first.family, bold, italic: first.italic, size, color: ink, align: "left", lineHeight: 1.2,
-      cover: { x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2, color: bg }, edited: true,
+      id: uid(), type: "text", x: x0, y: top.y - size * ((lh - 1) / 2 + 0.02),
+      w: para.length > 1 ? area.w * 1.02 : b.w * 1.3 + size * 2, h: area.h + size * 0.2,
+      text: para.map((p) => p.text.replace(/[\r\n\t]+/g, " ").trim()).join(" "), // Figma ends each line with \r
+      font: own?.key || first.family, bold, italic: first.italic, size, color: ink, align: "left", lineHeight: lh,
+      cover: { x: area.x - 1, y: area.y - 1, w: area.w + 2, h: area.h + 2, color: bg }, edited: true,
     };
     o.w = Math.min(o.w, page.w - o.x);
     change("Edit text", () => page.objects.push(o), { pages: [pageId] });
     select([o.id]);
-    requestAnimationFrame(() => startTyping(o.id, { selectAll: false }));
+    requestAnimationFrame(async () => {
+      startTyping(o.id, { selectAll: false });
+      // measure the letters once the box's font has loaded and its pop-in has settled, unless typing has begun
+      const text = o.text, wrap = document.querySelector(`.layer-objects [data-id="${o.id}"]`);
+      await Promise.all([document.fonts.ready, ...(wrap?.getAnimations() || []).map((a) => a.finished.catch(() => {}))]);
+      if (o.text === text) caretToPoint(o.id, e);
+    });
   },
 });
 
