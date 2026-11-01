@@ -5,6 +5,7 @@ import "./lift.css";
 import { PDFDocument, degrees } from "@cantoo/pdf-lib";
 import { findItems, cutItem, only, setContent } from "../../core/lift.js";
 import { el, toast } from "../../ui/kit.js";
+import { bbox } from "../../viewer/objects.js";
 
 export function install(app) {
   const { state, store } = app;
@@ -138,6 +139,29 @@ export function install(app) {
 
   // ---- the tool ----------------------------------------------------------------------------------
 
+  /**
+   * A press on an edit or on the PDF's words (not a picture or shape): Select moves those, so
+   * switch to it and replay the press for it, and the same drag carries on there.
+   */
+  function handToSelect(page, pt, e) {
+    const pad = 4 / state.zoom;
+    const onEdit = page.objects.some((o) => {
+      if (o.hidden || o.locked) return false;
+      const b = bbox(o);
+      return pt.x >= b.x - pad && pt.x <= b.x + b.w + pad && pt.y >= b.y - pad && pt.y <= b.y + b.h + pad;
+    });
+    const word = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.matches?.(".textLayer span"));
+    if (!onEdit && !word) return false;
+    e.stopImmediatePropagation(); // Select would see this press on the tool layer and miss the words
+    app.useTool("select");
+    (word || e.target).dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId, pointerType: e.pointerType,
+      isPrimary: e.isPrimary, button: 0, buttons: 1, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
+    }));
+    return true;
+  }
+  let handed = false;
+
   const setHot = (pageId, it) => {
     if (hot) nodeOf(hot.pageId, hot.it)?.classList.remove("lf-hot");
     hot = it ? { pageId, it } : null;
@@ -146,16 +170,17 @@ export function install(app) {
 
   app.registerTool({
     id: "lift", label: "Move pictures and shapes", icon: "Move", mode: "drag", order: 6, key: "m", group: "edit",
-    hint: "Drag a picture or shape (dashed outline) to move it.",
+    hint: "Drag a picture or shape (dashed outline), words or an edit to move it.",
     enter: () => {
       outlineAll();
       for (const p of state.pages) itemsOf(p).then((res) => { if (res === null && store.pageById(p.id)) toast("This PDF is locked, so its pictures and shapes can't be picked up."); });
     },
     leave: () => setHot(null),
     hover: (h) => { const page = h && store.pageById(h.pageId); setHot(h?.pageId, page && hit(page, h.pt)); },
-    down: ({ pageId, pt }) => {
+    down: ({ pageId, pt, e }) => {
       const page = store.pageById(pageId);
       const it = page && hit(page, pt);
+      handed = !it && !!page && handToSelect(page, pt, e);
       drag = it ? { pageId, it, start: pt, node: nodeOf(pageId, it) } : null;
       drag?.node?.classList.add("lf-drag");
     },
@@ -166,7 +191,8 @@ export function install(app) {
     up: async ({ pt }) => {
       const d = drag;
       drag = null;
-      if (!d) { toast("Nothing to pick up there. Pictures and shapes have a dashed outline."); return; }
+      if (handed) { handed = false; return; } // Select finished it
+      if (!d) { toast("Nothing to move there. Pictures and shapes have a dashed outline; words and edits move too."); return; }
       d.node?.classList.add("lf-busy");
       try {
         const obj = await liftItem(d.pageId, d.it, pt.x - d.start.x, pt.y - d.start.y);
