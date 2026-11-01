@@ -6,8 +6,7 @@ OddlyClever PDF uses these open-source parts. All of them allow commercial use.
 |---|---|---|
 | pdf.js (`pdfjs-dist`), with its cmaps, standard fonts, ICC profiles and wasm decoders (OpenJPEG, JBIG2, QCMS, QuickJS) | showing PDFs and reading their text | Apache-2.0 (the decoders' own BSD/MIT/Apache licences are in `public/pdfjs/wasm/LICENSE_*`) |
 | `@cantoo/pdf-lib` (a pdf-lib fork with encryption) | writing PDFs | MIT |
-| `@pdf-lib/fontkit` | embedding fonts | MIT |
-| `opentype.js` | rebuilding a PDF's own font from its letters (Figma exports) so edits match | MIT |
+| `@pdf-lib/fontkit` | embedding fonts, and reading Inter when rebuilding a PDF's own font | MIT |
 | `docx` | Word export | MIT |
 | `mammoth` | Word import | BSD-2-Clause |
 | `pptxgenjs` | PowerPoint export | MIT |

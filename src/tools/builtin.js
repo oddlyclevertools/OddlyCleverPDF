@@ -1,7 +1,7 @@
 // The everyday tools: add text, edit the PDF's own text, draw, highlight, shapes, whiteout,
 // redact, sticky notes and pictures.
 import { state, pageById, begin, end, live, select, addObject, uid, putImage, emit, change } from "../core/store.js";
-import { pageLines, blocksOf, charX, charAt, stemWidth } from "../core/text.js";
+import { pageLines, blocksOf, spanOf, charX, charAt, stemWidth } from "../core/text.js";
 import { viewOf } from "../viewer/viewer.js";
 import { registerTool, toolPrefs, useTool } from "./registry.js";
 import { startTyping } from "./select.js";
@@ -79,21 +79,23 @@ registerTool({
       toast(lines.length ? "No text right there. Tap on the words you want to change." : "This page has no editable text (it may be a scan). Use Add text, or turn on text recognition (OCR).", { ms: 4200 });
       return;
     }
-    const b = pick.block;
+    let b = pick.block;
+    // Type3 text (Figma exports): rebuild the font from the PDF's own letters, and take only the
+    // part of the line in the style you tapped
+    const own = b.runs[0].type3 ? await type3FontFor(pageId, b, pt).catch((e) => { console.warn("[type3]", e); return null; }) : null;
+    if (own) b = spanOf(own.runs);
     const page = pageById(pageId);
     const already = page.objects.find((o) => o.type === "text" && o.cover && Math.abs(o.cover.x - b.x) < 1 && Math.abs(o.cover.y - (b.y - 1)) < 1.5);
     if (already) { select([already.id]); startTyping(already.id); return; }
     const first = b.runs[0];
     const { bg, ink, stem = 0 } = v ? sampleColors(v, b) : { bg: "#ffffff", ink: "#111111" };
     const size = Math.round(first.size * 10) / 10;
-    // Type3 text (Figma exports): rebuild the font from the PDF's own letters; if that fails, judge
-    // bold by how thick the strokes are, since the font has no name or weight to read
-    const own = first.type3 ? await type3FontFor(pageId, b).catch((e) => { console.warn("[type3]", e); return null; }) : null;
+    // without a rebuilt font, a Type3 font has no name or weight to read, so judge bold by stroke thickness
     const bold = own ? false : first.type3 ? stem / first.size > 0.13 : first.bold;
     if (first.type3 && !own && !type3Noted) { type3Noted = true; toast("This PDF's font can't be reused, so we matched it as closely as we could.", { ms: 5000 }); }
     const o = {
       id: uid(), type: "text", x: b.x, y: b.y - size * 0.12, w: b.w * 1.3 + size * 2, h: b.h + size * 0.2, text: b.text,
-      font: own || first.family, bold, italic: first.italic, size, color: ink, align: "left", lineHeight: 1.2,
+      font: own?.key || first.family, bold, italic: first.italic, size, color: ink, align: "left", lineHeight: 1.2,
       cover: { x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2, color: bg }, edited: true,
     };
     o.w = Math.min(o.w, page.w - o.x);

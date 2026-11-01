@@ -2,10 +2,12 @@
 // and draw the letters you see as plain vector shapes on top. Normal editors can only swap in a
 // look-alike font. Here we line the invisible letters up with the shapes, cut the shapes into
 // letters, and rebuild a real font for each text style, so edits use the PDF's own letters.
-// Letters the PDF never used are filled in from Inter, scaled to match.
+// Letters the PDF never used are filled in from Inter, scaled to match. Fonts are written as
+// TrueType (ttf.js).
 import { PDFDocument, PDFName, PDFArray, PDFDict, PDFNumber, PDFRawStream, decodePDFRawStream } from "@cantoo/pdf-lib";
 import { state, pageById } from "./store.js";
 import { addFace, fontBytes } from "./fonts.js";
+import { makeTtf } from "./ttf.js";
 
 // ---- reading the page ------------------------------------------------------------------------
 
@@ -129,7 +131,7 @@ function type3Fonts(doc, node) {
 /**
  * Read one page: every invisible Type3 letter with its place, and every filled vector shape.
  * Shapes are matched to letters, then letters that are shown together are grouped into styles.
- * @returns {{ styles: Map<string, Map<string, { cmds, adv }>>, shows: Array<{ style, x0, x1, base, size }> }} in PDF user space
+ * @returns {{ styles: Map<string, Map<string, { cmds, adv }>>, shows: Array<{ style, x0, x1, base, size, text }> }} in PDF user space
  */
 export function readPage(doc, index) {
   const node = doc.getPage(index).node;
@@ -237,8 +239,20 @@ export function readPage(doc, index) {
         cmds: g.cs.flat().map(([t, ...p]) => [t, ...p.map(([x, y]) => [(x - g.x) * k, (y - g.base) * k])]),
       });
     }
-    const last = run.at(-1);
-    shows.push({ style, x0: run[0].x, x1: last.x + last.adv, base: run[0].base, size: run[0].size });
+    // one show per line: Figma writes a whole paragraph as one text block
+    let line = [];
+    const flush = () => {
+      if (!line.length) return;
+      const last = line.at(-1);
+      shows.push({ style, x0: line[0].x, x1: last.x + last.adv, base: line[0].base, size: line[0].size, text: line.map((g) => g.uni || "").join("") });
+      line = [];
+    };
+    for (const g of run) {
+      const prev = line.at(-1);
+      if (prev && (Math.abs(g.base - prev.base) > g.size * 0.3 || g.x < prev.x)) flush();
+      line.push(g);
+    }
+    flush();
   }
   return { styles, shows };
 }
@@ -248,13 +262,16 @@ export function readPage(doc, index) {
 const FILL = [[0x20, 0x7e], [0xa0, 0x17f], [0x2010, 0x2027], [0x2030, 0x203a], [0x20ac, 0x20ac], [0x2122, 0x2122]];
 const yMax = (cmds) => Math.max(0, ...cmds.flatMap((c) => c.slice(1).map((p) => p[1])));
 
-/** An opentype.js path in our outline form ([type, ...points]), scaled by k. */
-const fromOt = (path, k = 1) => path.commands.map((c) => {
-  if (c.type === "Z") return ["Z"];
-  if (c.type === "Q") return ["Q", [c.x1 * k, c.y1 * k], [c.x * k, c.y * k]];
-  if (c.type === "C") return ["C", [c.x1 * k, c.y1 * k], [c.x2 * k, c.y2 * k], [c.x * k, c.y * k]];
-  return [c.type, [c.x * k, c.y * k]];
+/** A fontkit glyph's outline in our form ([type, ...points]), scaled by k. */
+const fromFk = (glyph, k = 1) => glyph.path.commands.map(({ command: c, args: a }) => {
+  const p = (i) => [a[i] * k, a[i + 1] * k];
+  if (c === "moveTo") return ["M", p(0)];
+  if (c === "lineTo") return ["L", p(0)];
+  if (c === "quadraticCurveTo") return ["Q", p(0), p(2)];
+  if (c === "bezierCurveTo") return ["C", p(0), p(2), p(4)];
+  return ["Z"];
 });
+const has = (font, ch) => font.glyphForCodePoint(ch.codePointAt(0)).id > 0;
 
 /** How much of a letter is ink: its filled area over its height squared (bold letters score higher). */
 export function inkRatio(cmds) {
@@ -280,61 +297,41 @@ export function inkRatio(cmds) {
   return y1 > y0 ? Math.abs(area / 2) / (y1 - y0) ** 2 : 0;
 }
 
-/** The filler font (regular or bold) whose letters carry about as much ink as the style's own. */
+/** The filler font (regular or bold, fontkit fonts) whose letters carry about as much ink as the style's own. */
 export function pickFiller(glyphs, regular, bold) {
   let dr = 0, db = 0, n = 0;
   for (const [ch, g] of glyphs) {
-    if (n >= 12 || !/[A-Za-z0-9]/.test(ch) || !g.cmds.length) continue;
-    const r = regular.charToGlyph(ch), b = bold.charToGlyph(ch);
-    if (!r.index || !b.index) continue;
-    const mine = inkRatio(g.cmds);
-    dr += Math.abs(mine - inkRatio(fromOt(r.path))); db += Math.abs(mine - inkRatio(fromOt(b.path)));
+    if (n >= 12 || !/[A-Za-z0-9]/.test(ch) || !g.cmds.length || !has(regular, ch) || !has(bold, ch)) continue;
+    const mine = inkRatio(g.cmds), cp = ch.codePointAt(0);
+    dr += Math.abs(mine - inkRatio(fromFk(regular.glyphForCodePoint(cp))));
+    db += Math.abs(mine - inkRatio(fromFk(bold.glyphForCodePoint(cp))));
     n++;
   }
   return n && db < dr ? bold : regular;
 }
 
 /**
- * An OpenType font (ArrayBuffer) from a style's letters. `filler` is a parsed opentype.js font
- * whose letters fill the gaps, scaled to the same height.
+ * A TrueType font (ArrayBuffer) from a style's letters. `filler` is a fontkit font whose letters
+ * fill the gaps, scaled to the same height.
  */
-export async function buildFont(glyphs, filler) {
-  const m = await import("opentype.js");
-  const ot = m.default?.Font ? m.default : m;
-  const toPath = (cmds) => {
-    const p = new ot.Path();
-    for (const [t, a, b, c] of cmds) {
-      if (t === "M") p.moveTo(a[0], a[1]);
-      else if (t === "L") p.lineTo(a[0], a[1]);
-      else if (t === "C") p.curveTo(a[0], a[1], b[0], b[1], c[0], c[1]);
-      else if (t === "Q") p.quadTo(a[0], a[1], b[0], b[1]);
-      else p.close();
-    }
-    return p;
-  };
-  const list = [new ot.Glyph({ name: ".notdef", unicode: 0, advanceWidth: 500, path: new ot.Path() })];
-  const add = (cp, adv, path) => list.push(new ot.Glyph({ name: `u${cp.toString(16).toUpperCase().padStart(4, "0")}`, unicode: cp, advanceWidth: Math.round(adv), path }));
-  for (const [ch, g] of glyphs) add(ch.codePointAt(0), g.adv, toPath(g.cmds));
+export function buildFont(glyphs, filler) {
+  const list = [...glyphs].map(([ch, g]) => ({ unicode: ch.codePointAt(0), adv: g.adv, cmds: g.cmds }));
   if (filler) {
     let k = 1000 / filler.unitsPerEm;
     for (const ch of "HEIxzvn") {
-      const g = glyphs.get(ch), f = filler.charToGlyph(ch);
-      if (g?.cmds.length && f.index) { k *= yMax(g.cmds) / (f.getBoundingBox().y2 * k || 1); break; }
+      if (glyphs.get(ch)?.cmds.length && has(filler, ch)) { k *= yMax(glyphs.get(ch).cmds) / (filler.glyphForCodePoint(ch.codePointAt(0)).bbox.maxY * k || 1); break; }
     }
     for (const [a, b] of FILL) {
       for (let cp = a; cp <= b; cp++) {
-        const ch = String.fromCodePoint(cp);
-        if (glyphs.has(ch)) continue;
-        const f = filler.charToGlyph(ch);
-        if (!f.index) continue;
-        add(cp, f.advanceWidth * k, toPath(fromOt(f.path, k)));
+        const f = filler.glyphForCodePoint(cp);
+        if (glyphs.has(String.fromCodePoint(cp)) || !f.id) continue;
+        list.push({ unicode: cp, adv: f.advanceWidth * k, cmds: fromFk(f, k) });
       }
     }
   }
-  if (!glyphs.has(" ") && !list.some((g) => g.unicode === 32)) add(32, 260, new ot.Path());
+  if (!list.some((g) => g.unicode === 32)) list.push({ unicode: 32, adv: 260, cmds: [] });
   // ascent + descent = 1.2 em with the baseline where Edit text puts it (see the edittext tool)
-  const font = new ot.Font({ familyName: "OC PDF", styleName: "Regular", unitsPerEm: 1000, ascender: 920, descender: -280, glyphs: list });
-  return font.toArrayBuffer();
+  return makeTtf(list, { ascender: 920, descender: -280 });
 }
 
 // ---- in the app ------------------------------------------------------------------------------
@@ -357,7 +354,7 @@ function pageData(fileId, index) {
 }
 
 const filler = (file) => {
-  if (!fillers.has(file)) fillers.set(file, Promise.all([fontBytes(file), import("opentype.js")]).then(([b, m]) => (m.default?.parse ? m.default : m).parse(b)));
+  if (!fillers.has(file)) fillers.set(file, Promise.all([fontBytes(file), import("@pdf-lib/fontkit")]).then(([b, m]) => m.default.create(new Uint8Array(b))));
   return fillers.get(file);
 };
 
@@ -385,21 +382,34 @@ export function ensureFace(key, css) {
 }
 
 /**
- * The rebuilt-font key for a block of Type3 text tapped with Edit text, or null when the letters
- * can't be read (then Edit text uses a look-alike font).
+ * For a block of Type3 text tapped with Edit text at `pt`: the rebuilt font's key and the part of
+ * the block in the same text style as the tap, as runs (a line can mix styles, like
+ * "Title | details", and pdf.js may join them into one run). Null when the letters can't be read
+ * (then Edit text uses a look-alike font for the whole block).
+ * @returns {Promise<{ key: string, runs: Array } | null>}
  */
-export async function type3FontFor(pageId, block) {
+export async function type3FontFor(pageId, block, pt) {
   const p = pageById(pageId);
   if (!p || !state.files.get(p.src.fileId)?.bytes) return null;
   const d = await pageData(p.src.fileId, p.src.index);
   if (!d) return null;
-  const base = p.box[3] - (block.y + block.size * 0.8); // the block's baseline in PDF space
-  const cx = p.box[0] + block.x + block.w / 2;
-  const hit = d.shows.find((s) => cx >= s.x0 && cx <= s.x1 && Math.abs(s.base - base) < s.size * 0.5) ||
-    d.shows.find((s) => Math.abs(s.base - base) < s.size * 0.5 && s.x0 <= p.box[0] + block.x + block.w && s.x1 >= p.box[0] + block.x);
-  const glyphs = hit && d.styles.get(hit.style);
-  if (!glyphs || ![...glyphs.values()].some((g) => g.cmds.length)) return null;
-  const key = `pdf3:${p.src.fileId}:${p.src.index}:${hit.style}`;
+  const [bx, , , by] = p.box;
+  const base = by - (block.y + block.size * 0.8); // the block's baseline in PDF space
+  const row = d.shows.filter((s) => Math.abs(s.base - base) < s.size * 0.5 && s.x1 > bx + block.x && s.x0 < bx + block.x + block.w).sort((a, b) => a.x0 - b.x0);
+  const words = row.filter((s) => s.text.trim());
+  if (!words.length) return null;
+  const x = bx + pt.x;
+  const tapped = words.find((s) => x >= s.x0 && x <= s.x1) || words.reduce((a, s) => (Math.abs((s.x0 + s.x1) / 2 - x) < Math.abs((a.x0 + a.x1) / 2 - x) ? s : a));
+  const same = (s) => !s.text.trim() || s.style === tapped.style;
+  let a = row.indexOf(tapped), z = a;
+  while (a > 0 && same(row[a - 1])) a--;
+  while (z < row.length - 1 && same(row[z + 1])) z++;
+  while (!row[a].text.trim()) a++;
+  while (!row[z].text.trim()) z--;
+  const glyphs = d.styles.get(tapped.style);
+  if (![...glyphs.values()].some((g) => g.cmds.length)) return null;
+  const key = `pdf3:${p.src.fileId}:${p.src.index}:${tapped.style}`;
   await type3FontBytes(key);
-  return key;
+  const like = block.runs[0];
+  return { key, runs: row.slice(a, z + 1).map((s) => ({ ...like, str: s.text, x: s.x0 - bx, w: s.x1 - s.x0, y: by - s.base - s.size * 0.8, h: s.size, size: s.size })) };
 }

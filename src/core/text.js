@@ -86,6 +86,15 @@ export function blocksOf(line) {
   return out.filter((b) => b.text.trim());
 }
 
+/** A block made of some runs of a line (box and text). */
+export function spanOf(runs) {
+  const x = Math.min(...runs.map((r) => r.x)), y = Math.min(...runs.map((r) => r.y));
+  return {
+    runs, x, y, size: runs[0].size, text: joinRuns(runs),
+    w: Math.max(...runs.map((r) => r.x + r.w)) - x, h: Math.max(...runs.map((r) => r.y + r.h)) - y,
+  };
+}
+
 export function clearTextCache() { cache.clear(); }
 
 /**
