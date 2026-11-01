@@ -202,7 +202,9 @@ body[data-tool="edittext"] .textLayer span { outline: 1px dashed color-mix(in sr
 .obj-redact::after { content: "REDACT"; position: absolute; inset: 0; display: grid; place-items: center; color: #ff7aa9; font-size: 9px; font-weight: 800; letter-spacing: .2em; }
 .obj-note { background: var(--c); border: 1.5px solid #16121b; border-radius: 4px 4px 4px 10px; box-shadow: 2px 2px 0 #16121b; }
 .obj-note::after { content: ""; position: absolute; inset: 22% 18%; background: repeating-linear-gradient(#16121b 0 1.5px, transparent 1.5px 28%); opacity: .7; }
-body[data-tool="select"] .layer-objects .obj:not(.obj-svg), body[data-tool="select"] .sel-frame { pointer-events: auto; touch-action: none; cursor: move; }
+body[data-tool="select"] .layer-objects .obj:not(.obj-svg), .sel-frame { pointer-events: auto; touch-action: none; cursor: move; }
+/* with any other tool, the selection's frame sits above the tool's layer so it can still be moved */
+body:not([data-tool="select"]) .layer-objects { z-index: 5; }
 body[data-tool="select"] .obj-svg > * { pointer-events: visiblePainted; touch-action: none; cursor: move; }
 .sel-frame { position: absolute; border: 2px dashed var(--accent); border-radius: 3px; z-index: 5; }
 .sel-frame .h { position: absolute; width: 14px; height: 14px; background: #fff; border: 2.5px solid var(--accent); border-radius: 50%; }

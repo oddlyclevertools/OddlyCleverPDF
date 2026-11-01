@@ -59,21 +59,34 @@ function hit(pageId, pt, coarse) {
 let drag = null;
 
 function onDown(e) {
-  if (state.tool !== "select" || e.button > 0) return;
+  if (e.button > 0) return;
+  // other tools: only the selection's frame and handles move or resize it (presses elsewhere are the tool's)
+  const other = state.tool !== "select";
+  if (other && !e.target.closest?.(".sel-frame")) return;
   const pageEl = e.target.closest?.(".page");
   if (!pageEl) return;
   if (e.target.closest?.("[contenteditable=true]")) return; // typing
   const pageId = pageEl.dataset.id;
   const pt = toPage(pageId, e.clientX, e.clientY);
-  const h = hit(pageId, pt, e.pointerType !== "mouse");
+  let h = hit(pageId, pt, e.pointerType !== "mouse");
+  if (other && !(h && state.selection.includes(h.obj.id))) {
+    const f = findObject(state.selection[0]);
+    if (!f) return;
+    h = { obj: f.obj, handle: null };
+  }
   if (!h) {
     if (state.selection.length) select([]);
-    // the PDF's own words: a drag lifts the line and moves it; Alt keeps native text selection
-    if (e.altKey || !e.target.closest?.(".textLayer span")) return;
-    e.preventDefault();
-    window.getSelection()?.removeAllRanges();
-    drag = { pageId, start: pt, lift: true, id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY };
-    pageEl.setPointerCapture?.(e.pointerId);
+    if (e.altKey) return; // Alt keeps native text selection
+    if (e.target.closest?.(".textLayer span")) {
+      // the PDF's own words: a drag lifts the line and moves it
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      drag = { pageId, start: pt, lift: "words", id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY };
+      pageEl.setPointerCapture?.(e.pointerId);
+    } else {
+      // a picture or shape of the PDF's own: a drag picks it up (no preventDefault: over nothing, it still selects text)
+      drag = { pageId, start: pt, lift: "item", id: e.pointerId, moved: false, sx: e.clientX, sy: e.clientY };
+    }
     return;
   }
   e.preventDefault();
@@ -114,6 +127,7 @@ function applyMove(d, e) {
     } else setGuides(d.pageId, null);
     d.objs.forEach((obj) => moveBy(obj, d.orig.find((x) => x.id === obj.id), dx, dy));
   }
+  if (d.picked) window.getSelection()?.removeAllRanges(); // the press started a native text selection
   live([d.pageId]);
 }
 
@@ -125,14 +139,26 @@ function targetsFor(d) {
   return (d.targets = snapTargets(page, page.objects.filter((o) => !o.hidden && !moving.has(o.id)).map(bbox), d.lineXs));
 }
 
-/** Turn the pressed PDF line into an edited text box (via the Edit text tool) and carry on the drag with it. */
+/**
+ * Turn what was pressed into an edit and carry on the drag with it: a PDF line becomes edited text
+ * (via the Edit text tool), a picture or shape is picked up (via the lift feature's app.liftAt).
+ */
 async function lift(d) {
-  const page = pageById(d.pageId);
-  const before = new Set(page.objects.map((o) => o.id));
-  try { await toolList().find((t) => t.id === "edittext")?.tap({ pageId: d.pageId, pt: d.start }); } catch (err) { console.error("[select] lift", err); }
-  const o = page.objects.find((x) => !before.has(x.id));
-  if (!o) return; // no words there, or it reopened an edit that's already there
-  await closeTyping(o.id);
+  let o = null;
+  if (d.lift === "words") {
+    const page = pageById(d.pageId);
+    const before = new Set(page.objects.map((x) => x.id));
+    try { await toolList().find((t) => t.id === "edittext")?.tap({ pageId: d.pageId, pt: d.start }); } catch (err) { console.error("[select] lift", err); }
+    o = page.objects.find((x) => !before.has(x.id));
+    if (!o) return; // no words there, or it reopened an edit that's already there
+    await closeTyping(o.id);
+  } else {
+    // shortcut: reaches the lift feature through the app object; a registry hook would be cleaner if more features need this
+    try { o = await window.ocpdf?.liftAt?.(d.pageId, d.start); } catch (err) { console.error("[select] pick up", err); }
+    o = o && findObject(o.id)?.obj;
+    if (!o) return; // nothing there: the drag was a plain text selection
+    d.picked = true;
+  }
   Object.assign(d, { lift: false, obj: o, objs: [o], orig: [JSON.parse(JSON.stringify(o))], handle: null });
   select([o.id]);
   begin();
@@ -155,7 +181,8 @@ function onUp(e) {
   if (!drag || e.pointerId !== drag.id) return;
   const d = drag; drag = null;
   if (d.lift) {
-    if (d.lifting) { d.up = true; return; } // finishes once the line is lifted
+    if (d.lifting) { d.up = true; return; } // finishes once the line or picture is lifted
+    if (d.lift !== "words") return;
     // a double-click on the PDF's words opens them for typing
     if (Date.now() - lastWord.t < 450 && Math.hypot(d.sx - lastWord.x, d.sy - lastWord.y) < 8) toolList().find((t) => t.id === "edittext")?.tap({ pageId: d.pageId, pt: d.start });
     lastWord = { t: Date.now(), x: d.sx, y: d.sy };
@@ -348,6 +375,6 @@ export function installSelect(column) {
   column.addEventListener("pointermove", onMove);
   column.addEventListener("pointerup", onUp);
   column.addEventListener("pointercancel", onUp);
-  document.addEventListener("selectstart", (e) => { if (drag) e.preventDefault(); });
+  document.addEventListener("selectstart", (e) => { if (drag && drag.lift !== "item") e.preventDefault(); });
   document.addEventListener("keydown", onKey);
 }
