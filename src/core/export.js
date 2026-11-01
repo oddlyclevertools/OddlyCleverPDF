@@ -5,6 +5,7 @@
 import { PDFDocument, PDFName, PDFString, PDFHexString, rgb, degrees, BlendMode, LineCapStyle } from "@cantoo/pdf-lib";
 import { state } from "./store.js";
 import { fontFile, fontBytes, cssFamily } from "./fonts.js";
+import { ownLetters } from "./type3.js";
 
 export const lib = { PDFDocument, PDFName, PDFString, PDFHexString, rgb, degrees, BlendMode, LineCapStyle };
 
@@ -159,6 +160,8 @@ const canDraw = (font, text) => {
   return true;
 };
 
+const BORROWED = "Some letters you typed aren't in this PDF's own font, so we matched them as closely as we could.";
+
 async function drawObject(ctx, page, pdfPage, o) {
   const [bx0, , , by1] = page.box;
   const X = (x) => bx0 + x;
@@ -243,6 +246,8 @@ async function drawObject(ctx, page, pdfPage, o) {
         pdfPage.drawImage(img, { x: X(o.x), y: Y(o.y + o.h), width: o.w, height: o.h, opacity: op });
         return;
       }
+      const own = ownLetters(o.font);
+      if (own && [...o.text].some((ch) => ch.trim() && !own.has(ch)) && !ctx.notes.includes(BORROWED)) ctx.notes.push(BORROWED);
       const size = o.size || 14;
       const lh = size * (o.lineHeight || 1.25);
       const { asc, desc } = metrics(font);

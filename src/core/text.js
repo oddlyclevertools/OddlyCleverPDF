@@ -88,6 +88,30 @@ export function blocksOf(line) {
 
 export function clearTextCache() { cache.clear(); }
 
+/**
+ * Typical stroke thickness (pixels) of the ink in an RGBA strip: the median width of the dark runs
+ * across each row, counting faint edge pixels in part. Edit text uses it to guess bold when the
+ * PDF's font can't say (Type3 fonts from Figma).
+ */
+export function stemWidth(data, w, h, bg) {
+  const dist = (i) => Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]);
+  let far = 0;
+  for (let i = 0; i < data.length; i += 4) far = Math.max(far, dist(i));
+  if (far < 90) return 0;
+  const widths = [];
+  for (let y = 0; y < h; y++) {
+    let run = 0, solid = false;
+    for (let x = 0; x <= w; x++) {
+      const c = x < w ? Math.min(1, dist((y * w + x) * 4) / far) : 0;
+      if (c > 0.15) { run += c; solid ||= c > 0.5; continue; }
+      if (solid) widths.push(run);
+      run = 0; solid = false;
+    }
+  }
+  widths.sort((a, b) => a - b);
+  return widths.length ? widths[widths.length >> 1] : 0;
+}
+
 // ---- where each letter sits ---------------------------------------------------------------------
 
 const MEASURE_FONT = { sans: "Helvetica, Arial, sans-serif", serif: "'Times New Roman', Times, serif", mono: "'Courier New', monospace" };

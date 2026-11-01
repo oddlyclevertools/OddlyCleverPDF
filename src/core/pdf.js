@@ -104,7 +104,7 @@ async function loadedFonts(page, ids) {
 
 /**
  * The text on a page as runs with boxes in OUR page space (top-left, y down, points).
- * @returns {Promise<Array<{ str, x, y, w, h, size, family, bold, italic, dir }>>}
+ * @returns {Promise<Array<{ str, x, y, w, h, size, family, bold, italic, dir, type3 }>>}
  */
 export async function pageText(pdf, index) {
   const page = await pdf.getPage(index + 1);
@@ -115,19 +115,21 @@ export async function pageText(pdf, index) {
   for (const it of tc.items) {
     if (!("str" in it) || !it.str) continue;
     const tx = pdfjs.Util.transform(vp.transform, it.transform);
-    const size = Math.hypot(tx[2], tx[3]) || Math.abs(it.height) || 10;
+    const font = fonts.get(it.fontName);
+    const type3 = Boolean(font?.isType3Font);
+    // Type3 fonts (Figma exports) get a stretched height from pdf.js; the width scale is the real size
+    const size = (type3 ? Math.hypot(tx[0], tx[1]) : Math.hypot(tx[2], tx[3])) || Math.abs(it.height) || 10;
     const style = tc.styles[it.fontName];
-    const ascent = style?.ascent ?? 0.8;
+    const ascent = Number.isFinite(style?.ascent) ? style.ascent : 0.8; // NaN for Type3
     const x = tx[4];
     const y = tx[5] - size * ascent; // top of the glyph box
-    const font = fonts.get(it.fontName);
     const name = `${it.fontName || ""} ${style?.fontFamily || ""} ${font?.name || ""}`;
     out.push({
       str: it.str, x, y, w: it.width * (vp.scale || 1), h: size, size,
       family: FAMILY(style, it.fontName, font),
       bold: Boolean(font?.bold || font?.black) || /bold|black|heavy|semibold/i.test(name),
       italic: Boolean(font?.italic) || /italic|oblique/i.test(name),
-      dir: it.dir, eol: !!it.hasEOL,
+      dir: it.dir, eol: !!it.hasEOL, type3,
     });
   }
   return out;

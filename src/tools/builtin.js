@@ -1,11 +1,12 @@
 // The everyday tools: add text, edit the PDF's own text, draw, highlight, shapes, whiteout,
 // redact, sticky notes and pictures.
 import { state, pageById, begin, end, live, select, addObject, uid, putImage, emit, change } from "../core/store.js";
-import { pageLines, blocksOf, charX, charAt } from "../core/text.js";
+import { pageLines, blocksOf, charX, charAt, stemWidth } from "../core/text.js";
 import { viewOf } from "../viewer/viewer.js";
 import { registerTool, toolPrefs, useTool } from "./registry.js";
 import { startTyping } from "./select.js";
 import { toast } from "../ui/kit.js";
+import { type3FontFor } from "../core/type3.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -32,7 +33,7 @@ registerTool({
 
 // ---- edit the PDF's own text --------------------------------------------------------------------
 
-/** Average colour of a canvas strip (the paper behind the text). */
+/** Average colour of a canvas strip (the paper behind the text), and its stroke width in points. */
 function sampleColors(v, box) {
   const c = v.canvas;
   const g = c.getContext("2d", { willReadFrequently: true });
@@ -56,8 +57,10 @@ function sampleColors(v, box) {
     if (d > far) { far = d; ink = [data[i], data[i + 1], data[i + 2]]; }
   }
   const hex = (a) => `#${a.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
-  return { bg: hex(bg), ink: far > 90 ? hex(ink) : "#111111" };
+  return { bg: hex(bg), ink: far > 90 ? hex(ink) : "#111111", stem: stemWidth(data, w, h, bg) / sy };
 }
+
+let type3Noted = false;
 
 registerTool({
   id: "edittext", label: "Edit text", icon: "TextCursorInput", mode: "tap", order: 5, key: "e", group: "edit",
@@ -81,11 +84,16 @@ registerTool({
     const already = page.objects.find((o) => o.type === "text" && o.cover && Math.abs(o.cover.x - b.x) < 1 && Math.abs(o.cover.y - (b.y - 1)) < 1.5);
     if (already) { select([already.id]); startTyping(already.id); return; }
     const first = b.runs[0];
-    const { bg, ink } = v ? sampleColors(v, b) : { bg: "#ffffff", ink: "#111111" };
+    const { bg, ink, stem = 0 } = v ? sampleColors(v, b) : { bg: "#ffffff", ink: "#111111" };
     const size = Math.round(first.size * 10) / 10;
+    // Type3 text (Figma exports): rebuild the font from the PDF's own letters; if that fails, judge
+    // bold by how thick the strokes are, since the font has no name or weight to read
+    const own = first.type3 ? await type3FontFor(pageId, b).catch((e) => { console.warn("[type3]", e); return null; }) : null;
+    const bold = own ? false : first.type3 ? stem / first.size > 0.13 : first.bold;
+    if (first.type3 && !own && !type3Noted) { type3Noted = true; toast("This PDF's font can't be reused, so we matched it as closely as we could.", { ms: 5000 }); }
     const o = {
       id: uid(), type: "text", x: b.x, y: b.y - size * 0.12, w: b.w * 1.3 + size * 2, h: b.h + size * 0.2, text: b.text,
-      font: first.family, bold: first.bold, italic: first.italic, size, color: ink, align: "left", lineHeight: 1.2,
+      font: own || first.family, bold, italic: first.italic, size, color: ink, align: "left", lineHeight: 1.2,
       cover: { x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2, color: bg }, edited: true,
     };
     o.w = Math.min(o.w, page.w - o.x);

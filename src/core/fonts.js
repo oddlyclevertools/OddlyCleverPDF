@@ -10,14 +10,32 @@ export const FAMILIES = {
   script: { label: "Signature", css: "OC Script", files: { r: "DancingScript_600SemiBold" } },
 };
 
+// Fonts rebuilt from a PDF's own letters (see type3.js) use keys like "pdf3:<file>:<page>:<style>".
+const isPdfFont = (family) => String(family).startsWith("pdf3:");
+const pdfCss = (key) => `OC PDF ${key.replace(/[^\w-]/g, "_")}`;
+const faces = new Set();
+
 /** The file for a family + style, falling back to the regular face. */
 export function fontFile(family, bold, italic) {
+  if (isPdfFont(family)) return family;
   const f = (FAMILIES[family] || FAMILIES.sans).files;
   const key = bold && italic ? "bi" : bold ? "b" : italic ? "i" : "r";
   return f[key] || (bold && f.b) || f.r;
 }
 
-export const cssFamily = (family) => `"${(FAMILIES[family] || FAMILIES.sans).css}", system-ui, sans-serif`;
+export function cssFamily(family) {
+  if (!isPdfFont(family)) return `"${(FAMILIES[family] || FAMILIES.sans).css}", system-ui, sans-serif`;
+  const css = pdfCss(family);
+  if (!faces.has(css)) { faces.add(css); import("./type3.js").then((m) => m.ensureFace(family, css)); }
+  return `"${css}", "${FAMILIES.sans.css}", system-ui, sans-serif`;
+}
+
+/** Add a font made in the browser to the page (the text redraws once it loads). */
+export function addFace(css, bytes) {
+  const f = new FontFace(css, bytes);
+  document.fonts.add(f);
+  return f.load();
+}
 
 /** Register every face for the page (call once at start). */
 export function installFontFaces() {
@@ -37,6 +55,10 @@ export function installFontFaces() {
 const cache = new Map();
 /** The TTF bytes for a face (fetched once). */
 export async function fontBytes(file) {
+  if (isPdfFont(file)) {
+    // never let a font we couldn't rebuild stop a save: use the clean sans instead
+    return import("./type3.js").then((m) => m.type3FontBytes(file)).catch((e) => { console.warn("[type3]", e); return fontBytes(FAMILIES.sans.files.r); });
+  }
   if (!cache.has(file)) {
     cache.set(file, fetch(`${BASE}fonts/${file}.ttf`).then((r) => {
       if (!r.ok) throw new Error(`Couldn't load the font ${file}.`);
