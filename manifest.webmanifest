@@ -1,0 +1,21 @@
+{
+  "name": "OddlyClever PDF",
+  "short_name": "OC PDF",
+  "description": "Free PDF editor that runs on your device: edit, sign, fill, merge, compress and convert. Nothing is uploaded.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fff4e3",
+  "theme_color": "#fff4e3",
+  "icons": [
+    { "src": "brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "brand/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "brand/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    { "action": "./", "accept": { "application/pdf": [".pdf"], "image/*": [".png", ".jpg", ".jpeg", ".webp"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] } }
+  ],
+  "share_target": { "action": "./", "method": "POST", "enctype": "multipart/form-data", "params": { "files": [{ "name": "files", "accept": ["application/pdf", "image/*"] }] } },
+  "categories": ["productivity", "utilities"]
+}
