@@ -2,10 +2,12 @@
 // file's forms, links and outline when it can), rotate them, draw every edit as real PDF content
 // (text stays text), then run the export steps features register (forms, watermark, redaction,
 // password…). Returns the bytes.
-import { PDFDocument, PDFName, PDFString, PDFHexString, rgb, degrees, BlendMode, LineCapStyle } from "@cantoo/pdf-lib";
+import { PDFDocument, PDFName, PDFString, PDFHexString, PDFObjectCopier, rgb, degrees, BlendMode, LineCapStyle,
+  pushGraphicsState, popGraphicsState, concatTransformationMatrix, setGraphicsState, drawObject as doObject } from "@cantoo/pdf-lib";
 import { state } from "./store.js";
 import { fontFile, fontBytes, cssFamily } from "./fonts.js";
 import { ownLetters } from "./type3.js";
+import { pageOps, only, pickResources } from "./lift.js";
 
 export const lib = { PDFDocument, PDFName, PDFString, PDFHexString, rgb, degrees, BlendMode, LineCapStyle };
 
@@ -220,6 +222,7 @@ async function drawObject(ctx, page, pdfPage, o) {
       return;
     }
     case "image": {
+      if (o.lift && (await drawLifted(ctx, pdfPage, o, X, Y))) return;
       const url = state.images.get(o.imageId);
       if (!url) return;
       const bytes = dataUrlBytes(url);
@@ -233,10 +236,6 @@ async function drawObject(ctx, page, pdfPage, o) {
       return;
     }
     case "text": {
-      if (o.cover) {
-        const c = o.cover;
-        pdfPage.drawRectangle({ x: X(c.x), y: Y(c.y + c.h), width: c.w, height: c.h, color: hexToRgb(c.color || "#ffffff") });
-      }
       if (o.bg) pdfPage.drawRectangle({ x: X(o.x), y: Y(o.y + o.h), width: o.w, height: o.h, color: hexToRgb(o.bg), opacity: op });
       if (!String(o.text || "").trim()) return;
       const font = await ctx.font(o.font || "sans", !!o.bold, !!o.italic);
@@ -267,6 +266,31 @@ async function drawObject(ctx, page, pdfPage, o) {
   }
 }
 
+/**
+ * A picture or shape lifted off a page (see lift.js): its original drawing, alone in a Form
+ * XObject, drawn at the edit's box. Pictures keep their pixels, shapes stay vector.
+ * False when its source file is gone (then the on-screen picture is used).
+ */
+async function drawLifted(ctx, pdfPage, o, X, Y) {
+  const { fileId, index, units, box } = o.lift;
+  const src = ctx.sources.get(fileId);
+  if (!src || box[2] <= box[0] || box[3] <= box[1]) return false;
+  const key = `${fileId}:${index}`;
+  if (!ctx.liftOps.has(key)) ctx.liftOps.set(key, pageOps(src, index));
+  const { src: text, ops } = ctx.liftOps.get(key);
+  const part = only(text, ops, units);
+  const res = PDFObjectCopier.for(src.context, ctx.doc.context).copy(pickResources(src, index, part.names));
+  const form = ctx.doc.context.register(ctx.doc.context.flateStream(part.text, { Type: "XObject", Subtype: "Form", BBox: box, Resources: res }));
+  const name = pdfPage.node.newXObject("Lift", form);
+  const sx = o.w / (box[2] - box[0]), sy = o.h / (box[3] - box[1]);
+  const cmds = [pushGraphicsState()];
+  const op = o.opacity ?? 1;
+  if (op < 1) cmds.push(setGraphicsState(pdfPage.node.newExtGState("LiftGS", ctx.doc.context.obj({ Type: "ExtGState", ca: op, CA: op }))));
+  cmds.push(concatTransformationMatrix(sx, 0, 0, sy, X(o.x) - box[0] * sx, Y(o.y + o.h) - box[1] * sy), doObject(name), popGraphicsState());
+  pdfPage.pushOperators(...cmds);
+  return true;
+}
+
 function drawNoteIcon(pdfPage, x, y, hex) {
   pdfPage.drawRectangle({ x, y: y - 20, width: 20, height: 20, color: hexToRgb(hex), borderColor: rgb(0.1, 0.1, 0.1), borderWidth: 1 });
   for (let i = 0; i < 3; i++) pdfPage.drawLine({ start: { x: x + 4, y: y - 6 - i * 4 }, end: { x: x + 16 - (i === 2 ? 5 : 0), y: y - 6 - i * 4 }, thickness: 1, color: rgb(0.1, 0.1, 0.1) });
@@ -287,7 +311,7 @@ export function addTextAnnot(doc, pdfPage, r, text, hex, author = "") {
 
 /**
  * @typedef {{ doc: PDFDocument, pages: Array<{ page: object, pdfPage: any }>, font: Function, lib: typeof lib,
- *   opts: object, redactions: Array, unknown: string[], notes: string[] }} ExportCtx
+ *   opts: object, redactions: Array, unknown: string[], notes: string[], sources: Map<string, PDFDocument> }} ExportCtx
  */
 
 /**
@@ -307,11 +331,18 @@ export async function buildPdf(opts = {}) {
   try {
     prog(0.2, "Putting pages in order");
     const { doc, pdfPages } = await assemble(docs);
-    const ctx = { doc, pages: state.pages.map((page, i) => ({ page, pdfPage: pdfPages[i] })), font: fontLoader(doc), lib, opts, redactions: [], unknown: [], notes: [] };
+    const ctx = { doc, pages: state.pages.map((page, i) => ({ page, pdfPage: pdfPages[i] })), font: fontLoader(doc), lib, opts, redactions: [], unknown: [], notes: [], sources: docs, liftOps: new Map() };
     prog(0.35, "Drawing your edits");
     for (const { page, pdfPage } of ctx.pages) {
       pdfPage.setRotation(degrees(((page.rotate % 360) + 360) % 360));
-      for (const o of page.objects) await drawObject(ctx, page, pdfPage, o);
+      const shown = page.objects.filter((o) => !o.hidden); // the Layers panel's eye hides edits
+      // every text cover goes under every edit, so a moved line's old cover can't hide another's words
+      const [bx0, , , by1] = page.box;
+      for (const o of shown) {
+        const c = o.type === "text" && o.cover;
+        if (c) pdfPage.drawRectangle({ x: bx0 + c.x, y: by1 - c.y - c.h, width: c.w, height: c.h, color: hexToRgb(c.color || "#ffffff") });
+      }
+      for (const o of shown) await drawObject(ctx, page, pdfPage, o);
     }
     if (state.meta.title) doc.setTitle(state.meta.title);
     if (state.meta.author) doc.setAuthor(state.meta.author);

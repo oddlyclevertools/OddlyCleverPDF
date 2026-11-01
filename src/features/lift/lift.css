@@ -1,0 +1,11 @@
+.lf-layer { position: absolute; inset: 0; pointer-events: none; }
+.lf-item {
+  position: absolute; min-width: 4px; min-height: 4px; box-sizing: border-box;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 3px;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.lf-item.lf-hot, .lf-item.lf-drag { border-style: solid; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.lf-item.lf-drag { box-shadow: var(--shadow-lift); }
+.lf-item.lf-busy { animation: lf-pulse 0.7s ease-in-out infinite alternate; }
+@keyframes lf-pulse { to { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .lf-item.lf-busy { animation: none; opacity: 0.5; } }
